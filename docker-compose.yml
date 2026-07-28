@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: wa
+      POSTGRES_PASSWORD: wa
+      POSTGRES_DB: wa_admin
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wa -d wa_admin"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # App container is optional for local dev (run `npm run dev` on the host instead).
+  # Provided for production-style deployment.
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://wa:wa@db:5432/wa_admin?schema=public
+    ports:
+      - "3000:3000"
+    volumes:
+      - media:/app/storage/media
+    profiles: ["full"]
+
+volumes:
+  pgdata:
+  media:

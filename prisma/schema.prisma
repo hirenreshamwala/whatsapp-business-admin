@@ -1,0 +1,298 @@
+// WhatsApp Business Admin — data model
+// See docs/2026-07-24-whatsapp-business-admin-design.md
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Users & settings
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  AGENT
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(AGENT)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  templates     Template[]
+  broadcasts    Broadcast[]
+  sentMessages  Message[]      @relation("SentBy")
+  conversations Conversation[] @relation("AssignedTo")
+  apiKeys       ApiKey[]
+}
+
+// External REST API keys (for /api/v1). Only the SHA-256 hash is stored.
+model ApiKey {
+  id          String    @id @default(cuid())
+  name        String
+  keyHash     String    @unique
+  keyPrefix   String // shown in the UI to identify the key, e.g. "wba_live_a1b2c3"
+  lastUsedAt  DateTime?
+  revoked     Boolean   @default(false)
+  createdById String?
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+}
+
+// Singleton row (id = "default") holding the connected WABA credentials.
+model WabaSettings {
+  id                 String   @id @default("default")
+  wabaId             String?
+  metaAppId          String? // needed for template media-sample resumable uploads
+  phoneNumberId      String?
+  phoneNumberDisplay String?
+  businessName       String?
+  // Access token stored encrypted (AES-256-GCM) — never plaintext.
+  accessTokenEnc     String?
+  appSecret          String?
+  webhookVerifyToken String?
+  apiVersion         String   @default("v21.0")
+  updatedAt          DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Templates
+// ---------------------------------------------------------------------------
+
+enum TemplateCategory {
+  MARKETING
+  UTILITY
+  AUTHENTICATION
+}
+
+enum TemplateStatus {
+  LOCAL // created locally, not yet submitted to Meta
+  PENDING
+  APPROVED
+  REJECTED
+  PAUSED
+  DISABLED
+}
+
+model Template {
+  id              String           @id @default(cuid())
+  name            String
+  language        String           @default("en_US")
+  category        TemplateCategory
+  status          TemplateStatus   @default(LOCAL)
+  // Full component structure in WhatsApp Graph API shape.
+  components      Json
+  metaTemplateId  String?
+  rejectionReason String?
+  createdById     String?
+  createdBy       User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  broadcasts Broadcast[]
+  messages   Message[]
+
+  @@unique([name, language])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Contacts, conversations & messages
+// ---------------------------------------------------------------------------
+
+model Contact {
+  id           String   @id @default(cuid())
+  waId         String   @unique // E.164 digits, no '+'
+  name         String?
+  profileName  String? // name supplied by WhatsApp
+  tags         String[] @default([])
+  notes        String?
+  lastInboundAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  conversation        Conversation?
+  broadcastRecipients BroadcastRecipient[]
+}
+
+enum ConversationStatus {
+  OPEN
+  CLOSED
+}
+
+model Conversation {
+  id             String             @id @default(cuid())
+  contactId      String             @unique
+  contact        Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  status         ConversationStatus @default(OPEN)
+  unreadCount    Int                @default(0)
+  lastMessageAt  DateTime?
+  lastInboundAt  DateTime? // drives the 24h customer-service window
+  lastPreview    String?
+  assignedUserId String?
+  assignedUser   User?              @relation("AssignedTo", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  messages Message[]
+
+  @@index([lastMessageAt])
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  RECEIVED // inbound
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  STICKER
+  LOCATION
+  CONTACTS
+  TEMPLATE
+  INTERACTIVE
+  BUTTON
+  REACTION
+  UNSUPPORTED
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  conversationId String
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction      MessageDirection
+  type           MessageType      @default(TEXT)
+  status         MessageStatus    @default(PENDING)
+  // WhatsApp message id (wamid.*). Unique when present.
+  waMessageId    String?          @unique
+  text           String?
+  caption        String?
+  // Local media storage
+  mediaPath      String?
+  mediaMime      String?
+  mediaFilename  String?
+  // For location/interactive/etc. keep the raw structured payload.
+  payload        Json?
+  templateId     String?
+  template       Template?        @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  errorJson      Json?
+  sentById       String?
+  sentBy         User?            @relation("SentBy", fields: [sentById], references: [id], onDelete: SetNull)
+  timestamp      DateTime         @default(now())
+
+  @@index([conversationId, timestamp])
+}
+
+// ---------------------------------------------------------------------------
+// Broadcasts
+// ---------------------------------------------------------------------------
+
+enum BroadcastStatus {
+  DRAFT
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model Broadcast {
+  id          String          @id @default(cuid())
+  name        String
+  templateId  String
+  template    Template        @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  // Positional variable values shared across recipients (component params).
+  variables   Json?
+  status      BroadcastStatus @default(DRAFT)
+  total       Int             @default(0)
+  sentCount   Int             @default(0)
+  failedCount Int             @default(0)
+  createdById String?
+  createdBy   User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  recipients BroadcastRecipient[]
+}
+
+enum RecipientStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+model BroadcastRecipient {
+  id          String          @id @default(cuid())
+  broadcastId String
+  broadcast   Broadcast       @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  contactId   String
+  contact     Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  status      RecipientStatus @default(PENDING)
+  waMessageId String?         @unique
+  error       String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([broadcastId, contactId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Audit logs
+// ---------------------------------------------------------------------------
+
+// Every OUTBOUND Graph API call, written automatically by graphFetch().
+model ApiLog {
+  id             String   @id @default(cuid())
+  method         String
+  endpoint       String
+  requestBody    Json?
+  responseStatus Int?
+  responseBody   Json?
+  ok             Boolean  @default(false)
+  durationMs     Int?
+  relatedType    String? // e.g. "template", "message", "broadcast"
+  relatedId      String?
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([relatedType, relatedId])
+}
+
+// Every INBOUND webhook POST, raw payload stored before processing.
+model WebhookEvent {
+  id             String   @id @default(cuid())
+  payload        Json
+  signatureValid Boolean  @default(false)
+  processedOk    Boolean  @default(false)
+  eventSummary   String? // short human label, e.g. "message from 9199..., 1 status"
+  error          String?
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+}

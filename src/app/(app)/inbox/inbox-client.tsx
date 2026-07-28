@@ -1,0 +1,395 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Search, Send, Paperclip, Check, CheckCheck, Clock, AlertCircle, MessageSquare, FileText, LayoutTemplate,
+} from "lucide-react";
+import { apiFetch } from "@/lib/fetcher";
+import { cn, formatTime } from "@/lib/utils";
+import { useRealtime } from "@/hooks/use-realtime";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useToast } from "@/components/ui/use-toast";
+
+type Contact = { id: string; waId: string; name: string | null; profileName: string | null };
+type Conversation = {
+  id: string;
+  contact: Contact;
+  lastPreview: string | null;
+  lastMessageAt: string | null;
+  unreadCount: number;
+  windowOpen: boolean;
+};
+type Msg = {
+  id: string;
+  direction: "IN" | "OUT";
+  type: string;
+  status: string;
+  text: string | null;
+  caption: string | null;
+  hasMedia: boolean;
+  mediaMime: string | null;
+  mediaFilename: string | null;
+  timestamp: string;
+};
+type Thread = {
+  conversation: { id: string; contact: Contact; windowOpen: boolean; lastInboundAt: string | null };
+  messages: Msg[];
+};
+
+function displayName(c: Contact) {
+  return c.name || c.profileName || `+${c.waId}`;
+}
+function initials(c: Contact) {
+  return displayName(c).replace("+", "").slice(0, 2).toUpperCase();
+}
+
+export function InboxClient() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const qc = useQueryClient();
+  const activeId = params.get("c");
+  const [search, setSearch] = useState("");
+
+  const { data: conversations = [] } = useQuery({
+    queryKey: ["conversations", search],
+    queryFn: () => apiFetch<Conversation[]>(`/api/conversations${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+    refetchInterval: 30_000,
+  });
+
+  // Realtime: refresh lists + the open thread on any event.
+  useRealtime((msg) => {
+    if (msg.type.startsWith("message:")) {
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      const p = msg.payload as { conversationId?: string };
+      if (p.conversationId && p.conversationId === activeId) {
+        qc.invalidateQueries({ queryKey: ["thread", activeId] });
+      }
+    }
+  });
+
+  function openConversation(id: string) {
+    router.push(`/inbox?c=${id}`);
+  }
+
+  return (
+    <div className="flex h-full">
+      {/* Conversation list */}
+      <div className="flex w-72 shrink-0 flex-col border-r">
+        <div className="border-b p-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input className="pl-8" placeholder="Search chats…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto scroll-thin">
+          {conversations.length === 0 && (
+            <div className="p-6 text-center text-xs text-muted-foreground">No conversations yet.</div>
+          )}
+          {conversations.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => openConversation(c.id)}
+              className={cn(
+                "flex w-full items-center gap-2 border-b px-2.5 py-2 text-left transition-colors hover:bg-accent",
+                c.id === activeId && "bg-accent",
+              )}
+            >
+              <Avatar className="h-9 w-9">
+                <AvatarFallback>{initials(c.contact)}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-sm font-medium">{displayName(c.contact)}</span>
+                  {c.lastMessageAt && (
+                    <span className="shrink-0 text-[10px] text-muted-foreground">{formatTime(c.lastMessageAt)}</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-xs text-muted-foreground">{c.lastPreview || "—"}</span>
+                  {c.unreadCount > 0 && (
+                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                      {c.unreadCount}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Thread */}
+      <div className="min-w-0 flex-1">
+        {activeId ? <ThreadPane conversationId={activeId} /> : <EmptyThread />}
+      </div>
+    </div>
+  );
+}
+
+function EmptyThread() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+      <MessageSquare className="mb-2 h-10 w-10 opacity-30" />
+      <p className="text-sm">Select a conversation to start chatting.</p>
+    </div>
+  );
+}
+
+function ThreadPane({ conversationId }: { conversationId: string }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [text, setText] = useState("");
+  const [showTemplates, setShowTemplates] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["thread", conversationId],
+    queryFn: () => apiFetch<Thread>(`/api/conversations/${conversationId}/messages`),
+  });
+
+  // Auto-scroll to bottom on new messages.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+  }, [data?.messages.length]);
+
+  // Opening a thread marks it read server-side; refresh the list to clear the badge.
+  useEffect(() => {
+    qc.invalidateQueries({ queryKey: ["conversations"] });
+  }, [conversationId, qc]);
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["thread", conversationId] });
+    qc.invalidateQueries({ queryKey: ["conversations"] });
+  };
+
+  const sendText = useMutation({
+    mutationFn: (t: string) =>
+      apiFetch(`/api/conversations/${conversationId}/messages`, { method: "POST", body: JSON.stringify({ kind: "text", text: t }) }),
+    onSuccess: () => {
+      setText("");
+      invalidate();
+    },
+    onError: (e: Error) => toast({ variant: "destructive", title: "Not sent", description: e.message }),
+  });
+
+  const sendMedia = useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return fetch(`/api/conversations/${conversationId}/messages`, { method: "POST", body: fd }).then(async (r) => {
+        if (!r.ok) throw new Error((await r.json()).error || "Upload failed");
+      });
+    },
+    onSuccess: invalidate,
+    onError: (e: Error) => toast({ variant: "destructive", title: "Not sent", description: e.message }),
+  });
+
+  const sendTemplate = useMutation({
+    mutationFn: (templateId: string) =>
+      apiFetch(`/api/conversations/${conversationId}/messages`, { method: "POST", body: JSON.stringify({ kind: "template", templateId }) }),
+    onSuccess: () => {
+      setShowTemplates(false);
+      invalidate();
+    },
+    onError: (e: Error) => toast({ variant: "destructive", title: "Not sent", description: e.message }),
+  });
+
+  const windowInfo = useMemo(() => {
+    if (!data) return null;
+    if (data.conversation.windowOpen && data.conversation.lastInboundAt) {
+      const closesAt = new Date(data.conversation.lastInboundAt).getTime() + 24 * 3600 * 1000;
+      const hrs = Math.max(0, Math.round((closesAt - Date.now()) / 3600000));
+      return { open: true, label: `Session open · ~${hrs}h left` };
+    }
+    return { open: false, label: "24h window closed — send an approved template" };
+  }, [data]);
+
+  if (isLoading || !data) return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading…</div>;
+
+  const contact = data.conversation.contact;
+  const windowOpen = data.conversation.windowOpen;
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b bg-card px-3">
+        <Avatar className="h-8 w-8">
+          <AvatarFallback>{initials(contact)}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium">{displayName(contact)}</div>
+          <div className="text-[11px] text-muted-foreground">+{contact.waId}</div>
+        </div>
+        <div className="ml-auto">
+          <Badge variant={windowOpen ? "success" : "warning"}>{windowInfo?.label}</Badge>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div ref={scrollRef} className="wa-wallpaper min-h-0 flex-1 space-y-1.5 overflow-auto scroll-thin p-4">
+        {data.messages.map((m) => (
+          <MessageBubble key={m.id} m={m} />
+        ))}
+        {data.messages.length === 0 && (
+          <div className="mt-10 text-center text-xs text-muted-foreground">No messages yet. Say hello 👋</div>
+        )}
+      </div>
+
+      {/* Composer */}
+      <div className="shrink-0 border-t bg-card p-2">
+        {windowOpen ? (
+          <div className="flex items-end gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) sendMedia.mutate(f);
+                e.target.value = "";
+              }}
+            />
+            <Button variant="ghost" size="icon" title="Attach" onClick={() => fileRef.current?.click()} disabled={sendMedia.isPending}>
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            <Input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && text.trim()) {
+                  e.preventDefault();
+                  sendText.mutate(text.trim());
+                }
+              }}
+              placeholder="Type a message…"
+            />
+            <Button size="icon" disabled={!text.trim() || sendText.isPending} onClick={() => sendText.mutate(text.trim())}>
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2 rounded-md bg-muted/50 px-3 py-2">
+            <span className="text-xs text-muted-foreground">
+              This chat is outside the 24-hour window. You can only send an approved template.
+            </span>
+            <Button size="sm" onClick={() => setShowTemplates(true)}>
+              <LayoutTemplate className="h-4 w-4" /> Send template
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <TemplatePicker
+        open={showTemplates}
+        onClose={() => setShowTemplates(false)}
+        onPick={(id) => sendTemplate.mutate(id)}
+        pending={sendTemplate.isPending}
+      />
+    </div>
+  );
+}
+
+function MessageBubble({ m }: { m: Msg }) {
+  const out = m.direction === "OUT";
+  return (
+    <div className={cn("flex", out ? "justify-end" : "justify-start")}>
+      <div
+        className={cn(
+          "max-w-[70%] rounded-lg px-2.5 py-1.5 text-sm shadow-sm",
+          out ? "rounded-tr-none bg-[#d9fdd3] text-zinc-900 dark:bg-[#005c4b] dark:text-zinc-50" : "rounded-tl-none bg-white text-zinc-900 dark:bg-[#202c33] dark:text-zinc-50",
+        )}
+      >
+        {m.hasMedia && <MediaContent m={m} />}
+        {m.text && <div className="whitespace-pre-wrap break-words">{m.text}</div>}
+        {m.caption && <div className="whitespace-pre-wrap break-words">{m.caption}</div>}
+        <div className={cn("mt-0.5 flex items-center justify-end gap-1 text-[10px]", out ? "text-zinc-600 dark:text-zinc-300" : "text-muted-foreground")}>
+          {formatTime(m.timestamp)}
+          {out && <StatusTick status={m.status} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MediaContent({ m }: { m: Msg }) {
+  const url = `/api/media/${m.id}`;
+  const mime = m.mediaMime || "";
+  if (mime.startsWith("image/")) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={url} alt="" className="mb-1 max-h-64 rounded" />;
+  }
+  if (mime.startsWith("video/")) return <video src={url} controls className="mb-1 max-h-64 rounded" />;
+  if (mime.startsWith("audio/")) return <audio src={url} controls className="mb-1 w-56" />;
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="mb-1 flex items-center gap-2 rounded bg-black/5 p-2 dark:bg-white/10">
+      <FileText className="h-5 w-5" />
+      <span className="truncate text-xs">{m.mediaFilename || "Document"}</span>
+    </a>
+  );
+}
+
+function StatusTick({ status }: { status: string }) {
+  switch (status) {
+    case "PENDING": return <Clock className="h-3 w-3" />;
+    case "SENT": return <Check className="h-3 w-3" />;
+    case "DELIVERED": return <CheckCheck className="h-3 w-3" />;
+    case "READ": return <CheckCheck className="h-3 w-3 text-sky-500" />;
+    case "FAILED": return <AlertCircle className="h-3 w-3 text-destructive" />;
+    default: return null;
+  }
+}
+
+type ApprovedTemplate = { id: string; name: string; language: string; status: string };
+
+function TemplatePicker({
+  open,
+  onClose,
+  onPick,
+  pending,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onPick: (id: string) => void;
+  pending: boolean;
+}) {
+  const { data: templates = [] } = useQuery({
+    queryKey: ["templates", "approved"],
+    queryFn: () => apiFetch<ApprovedTemplate[]>("/api/templates?approved=true"),
+    enabled: open,
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Choose an approved template</DialogTitle>
+        </DialogHeader>
+        <div className="max-h-80 space-y-1 overflow-auto scroll-thin">
+          {templates.length === 0 && (
+            <p className="py-6 text-center text-xs text-muted-foreground">
+              No approved templates. Create and get one approved first.
+            </p>
+          )}
+          {templates.map((t) => (
+            <button
+              key={t.id}
+              disabled={pending}
+              onClick={() => onPick(t.id)}
+              className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:border-primary/40 disabled:opacity-50"
+            >
+              <span className="font-medium">{t.name}</span>
+              <Badge variant="outline">{t.language}</Badge>
+            </button>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

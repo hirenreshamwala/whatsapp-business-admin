@@ -1,0 +1,82 @@
+import PQueue from "p-queue";
+import { prisma } from "@/lib/prisma";
+import { getWabaConfig } from "@/lib/settings";
+import { ensureConversation, sendMessage } from "@/lib/whatsapp/send";
+import { templateExampleComponents } from "@/lib/whatsapp/template-service";
+import { WhatsAppApiError } from "@/lib/whatsapp/client";
+import type { ApiComponent } from "@/lib/whatsapp/template-types";
+
+/**
+ * Single in-process queue shared across requests (kept on globalThis so Next's
+ * separate route bundles reuse one instance). Concurrency + interval cap keep us
+ * within WhatsApp's rate limits without any external broker.
+ */
+const g = globalThis as unknown as { __waBroadcastQueue?: PQueue };
+function queue(): PQueue {
+  if (!g.__waBroadcastQueue) {
+    g.__waBroadcastQueue = new PQueue({ concurrency: 8, interval: 1000, intervalCap: 20 });
+  }
+  return g.__waBroadcastQueue;
+}
+
+/** Kick off sending for a broadcast. Returns immediately; work runs in the queue. */
+export async function runBroadcast(broadcastId: string): Promise<void> {
+  const broadcast = await prisma.broadcast.findUnique({
+    where: { id: broadcastId },
+    include: { template: true, recipients: { include: { contact: true } } },
+  });
+  if (!broadcast) throw new WhatsAppApiError(404, "Broadcast not found");
+  if (broadcast.template.status !== "APPROVED") {
+    throw new WhatsAppApiError(400, "Broadcast template must be approved.");
+  }
+
+  const config = await getWabaConfig();
+  const components = templateExampleComponents(broadcast.template.components as unknown as ApiComponent[]);
+
+  await prisma.broadcast.update({ where: { id: broadcastId }, data: { status: "RUNNING" } });
+
+  const pending = broadcast.recipients.filter((r) => r.status === "PENDING");
+
+  for (const recipient of pending) {
+    queue().add(async () => {
+      try {
+        const { conversation } = await ensureConversation(recipient.contact.waId, recipient.contact.name ?? undefined);
+        const message = await sendMessage({
+          conversationId: conversation.id,
+          to: recipient.contact.waId,
+          config,
+          content: {
+            kind: "template",
+            templateId: broadcast.templateId,
+            templateName: broadcast.template.name,
+            language: broadcast.template.language,
+            components,
+            preview: `Broadcast: ${broadcast.name}`,
+          },
+        });
+        await prisma.broadcastRecipient.update({
+          where: { id: recipient.id },
+          data: { status: "SENT", waMessageId: message.waMessageId },
+        });
+        await prisma.broadcast.update({ where: { id: broadcastId }, data: { sentCount: { increment: 1 } } });
+      } catch (e) {
+        await prisma.broadcastRecipient.update({
+          where: { id: recipient.id },
+          data: { status: "FAILED", error: e instanceof Error ? e.message : String(e) },
+        });
+        await prisma.broadcast.update({ where: { id: broadcastId }, data: { failedCount: { increment: 1 } } });
+      } finally {
+        await maybeComplete(broadcastId);
+      }
+    });
+  }
+}
+
+async function maybeComplete(broadcastId: string): Promise<void> {
+  const remaining = await prisma.broadcastRecipient.count({
+    where: { broadcastId, status: "PENDING" },
+  });
+  if (remaining === 0) {
+    await prisma.broadcast.update({ where: { id: broadcastId }, data: { status: "COMPLETED" } });
+  }
+}

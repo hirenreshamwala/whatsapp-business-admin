@@ -1,0 +1,161 @@
+import { prisma } from "@/lib/prisma";
+import { getWabaConfig } from "@/lib/settings";
+import { graphFetch, WhatsAppApiError } from "@/lib/whatsapp/client";
+import {
+  builderToComponents,
+  type ApiComponent,
+  type TemplateBuilder,
+} from "@/lib/whatsapp/template-types";
+import { validateTemplate } from "@/lib/whatsapp/template-validate";
+import type { TemplateStatus } from "@prisma/client";
+
+function mapMetaStatus(status: string): TemplateStatus {
+  switch (status?.toUpperCase()) {
+    case "APPROVED":
+      return "APPROVED";
+    case "REJECTED":
+      return "REJECTED";
+    case "PAUSED":
+      return "PAUSED";
+    case "DISABLED":
+      return "DISABLED";
+    default:
+      return "PENDING";
+  }
+}
+
+/** Submit a locally-stored template to Meta for approval. */
+export async function submitTemplate(templateId: string): Promise<{ status: TemplateStatus; metaId: string }> {
+  const config = await getWabaConfig();
+  if (!config.wabaId) throw new WhatsAppApiError(400, "Set your WABA ID in Settings first.");
+
+  const tmpl = await prisma.template.findUnique({ where: { id: templateId } });
+  if (!tmpl) throw new WhatsAppApiError(404, "Template not found.");
+
+  // Reconstruct a builder-shaped object from stored components for validation.
+  const components = tmpl.components as unknown as ApiComponent[];
+
+  const payload = {
+    name: tmpl.name,
+    language: tmpl.language,
+    category: tmpl.category,
+    components,
+  };
+
+  const res = await graphFetch<{ id: string; status: string; category: string }>({
+    method: "POST",
+    path: `/${config.wabaId}/message_templates`,
+    body: payload,
+    related: { type: "template", id: templateId },
+    config,
+  });
+
+  const status = mapMetaStatus(res.status);
+  await prisma.template.update({
+    where: { id: templateId },
+    data: { status, metaTemplateId: res.id, rejectionReason: null },
+  });
+  return { status, metaId: res.id };
+}
+
+/** Build + validate a builder, returning components or throwing a 422-style error. */
+export function buildValidatedComponents(builder: TemplateBuilder): ApiComponent[] {
+  const errors = validateTemplate(builder);
+  if (errors.length > 0) {
+    throw new WhatsAppApiError(422, errors.map((e) => e.message).join(" "));
+  }
+  return builderToComponents(builder);
+}
+
+type MetaTemplate = {
+  id: string;
+  name: string;
+  language: string;
+  status: string;
+  category: string;
+  components: ApiComponent[];
+  rejected_reason?: string;
+};
+
+/** Pull template statuses from Meta and reconcile local rows. */
+export async function syncTemplates(): Promise<{ synced: number }> {
+  const config = await getWabaConfig();
+  if (!config.wabaId) throw new WhatsAppApiError(400, "Set your WABA ID in Settings first.");
+
+  const res = await graphFetch<{ data: MetaTemplate[] }>({
+    method: "GET",
+    path: `/${config.wabaId}/message_templates`,
+    query: { fields: "name,status,category,language,components,id,rejected_reason", limit: 200 },
+    related: { type: "template" },
+    config,
+  });
+
+  let synced = 0;
+  for (const t of res.data ?? []) {
+    const status = mapMetaStatus(t.status);
+    await prisma.template.upsert({
+      where: { name_language: { name: t.name, language: t.language } },
+      update: {
+        status,
+        category: t.category as MetaTemplate["category"] as "MARKETING" | "UTILITY" | "AUTHENTICATION",
+        components: t.components as object,
+        metaTemplateId: t.id,
+        rejectionReason: t.rejected_reason && t.rejected_reason !== "NONE" ? t.rejected_reason : null,
+      },
+      create: {
+        name: t.name,
+        language: t.language,
+        category: (t.category as "MARKETING" | "UTILITY" | "AUTHENTICATION") ?? "UTILITY",
+        status,
+        components: t.components as object,
+        metaTemplateId: t.id,
+        rejectionReason: t.rejected_reason && t.rejected_reason !== "NONE" ? t.rejected_reason : null,
+      },
+    });
+    synced++;
+  }
+  return { synced };
+}
+
+/**
+ * Build the Graph `components` (parameters) for SENDING a template, filling
+ * variable slots from the template's stored example values. Shared by the inbox
+ * template send and broadcasts.
+ */
+export function templateExampleComponents(components: ApiComponent[]): unknown[] {
+  const out: unknown[] = [];
+  for (const c of components) {
+    if (c.type === "HEADER" && c.format === "TEXT" && c.example?.header_text?.length) {
+      out.push({ type: "header", parameters: c.example.header_text.map((v) => ({ type: "text", text: v })) });
+    }
+    if (c.type === "BODY" && c.example?.body_text?.[0]?.length) {
+      out.push({ type: "body", parameters: c.example.body_text[0].map((v) => ({ type: "text", text: v })) });
+    }
+  }
+  return out;
+}
+
+/** Delete a template both on Meta (by name) and locally. */
+export async function deleteTemplate(templateId: string): Promise<void> {
+  const config = await getWabaConfig();
+  const tmpl = await prisma.template.findUnique({ where: { id: templateId } });
+  if (!tmpl) throw new WhatsAppApiError(404, "Template not found.");
+
+  // Only call Meta if it was actually submitted.
+  if (tmpl.metaTemplateId && config.wabaId) {
+    try {
+      await graphFetch({
+        method: "DELETE",
+        path: `/${config.wabaId}/message_templates`,
+        query: { name: tmpl.name },
+        related: { type: "template", id: templateId },
+        config,
+      });
+    } catch (e) {
+      // If Meta already removed it, continue with the local delete.
+      if (!(e instanceof WhatsAppApiError) || e.status !== 404) throw e;
+    }
+  }
+
+  await prisma.template.delete({ where: { id: templateId } });
+}

@@ -1,0 +1,22 @@
+/** Common WhatsApp template language codes. Not exhaustive — Meta supports more. */
+export const TEMPLATE_LANGUAGES: { code: string; label: string }[] = [
+  { code: "en_US", label: "English (US)" },
+  { code: "en_GB", label: "English (UK)" },
+  { code: "en", label: "English" },
+  { code: "hi", label: "Hindi" },
+  { code: "gu", label: "Gujarati" },
+  { code: "mr", label: "Marathi" },
+  { code: "ta", label: "Tamil" },
+  { code: "te", label: "Telugu" },
+  { code: "bn", label: "Bengali" },
+  { code: "pa", label: "Punjabi" },
+  { code: "es", label: "Spanish" },
+  { code: "es_ES", label: "Spanish (Spain)" },
+  { code: "pt_BR", label: "Portuguese (Brazil)" },
+  { code: "fr", label: "French" },
+  { code: "de", label: "German" },
+  { code: "ar", label: "Arabic" },
+  { code: "id", label: "Indonesian" },
+  { code: "ru", label: "Russian" },
+  { code: "zh_CN", label: "Chinese (Simplified)" },
+];

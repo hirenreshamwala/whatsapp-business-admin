@@ -1,0 +1,22 @@
+node_modules
+.next
+out
+build
+dist
+
+# env
+.env
+.env*.local
+
+# data / media
+/storage
+*.log
+
+# os
+.DS_Store
+
+# misc
+.vscode
+coverage
+*.tsbuildinfo
+next-env.d.ts

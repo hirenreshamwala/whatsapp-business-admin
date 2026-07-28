@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 20% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 20% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 20% 14%;
+    /* WhatsApp teal as primary */
+    --primary: 168 76% 30%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 20% 96%;
+    --secondary-foreground: 222 20% 20%;
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 14% 45%;
+    --accent: 210 20% 94%;
+    --accent-foreground: 222 20% 20%;
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 18% 89%;
+    --input: 214 18% 89%;
+    --ring: 168 76% 30%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222 24% 9%;
+    --foreground: 210 20% 92%;
+    --card: 222 22% 12%;
+    --card-foreground: 210 20% 92%;
+    --popover: 222 22% 12%;
+    --popover-foreground: 210 20% 92%;
+    --primary: 160 70% 42%;
+    --primary-foreground: 222 30% 8%;
+    --secondary: 217 20% 18%;
+    --secondary-foreground: 210 20% 92%;
+    --muted: 217 20% 16%;
+    --muted-foreground: 215 16% 60%;
+    --accent: 217 20% 20%;
+    --accent-foreground: 210 20% 92%;
+    --destructive: 0 62% 46%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 217 20% 20%;
+    --input: 217 20% 22%;
+    --ring: 160 70% 42%;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Dense-friendly scrollbars */
+@layer utilities {
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  .scroll-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 8px;
+  }
+}
+
+/* WhatsApp chat wallpaper pattern for the preview + inbox */
+.wa-wallpaper {
+  background-color: #efeae2;
+  background-image: radial-gradient(hsla(0, 0%, 0%, 0.04) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+.dark .wa-wallpaper {
+  background-color: #0b141a;
+  background-image: radial-gradient(hsla(0, 0%, 100%, 0.03) 1px, transparent 1px);
+}
