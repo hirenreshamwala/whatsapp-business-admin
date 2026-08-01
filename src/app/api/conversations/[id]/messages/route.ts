@@ -7,10 +7,12 @@ import { uploadOutboundMedia } from "@/lib/whatsapp/media";
 import { mediaStore, extFromMime } from "@/lib/media";
 import { templateExampleComponents } from "@/lib/whatsapp/template-service";
 import type { ApiComponent } from "@/lib/whatsapp/template-types";
+import { presentFlowSubmission } from "@/lib/whatsapp/flow-present";
+import { finishPreparedFlowLaunch, launchFlow, prepareTemplateFlowLaunch } from "@/lib/whatsapp/flow-launch";
 
 /** Fetch the thread (oldest → newest) and mark it read. */
 export const GET = handle(async (_req, { params }) => {
-  await requireUser();
+  const session = await requireUser();
   const { id } = await params;
   const conversation = await prisma.conversation.findUnique({ where: { id }, include: { contact: true } });
   if (!conversation) throw new HttpError(404, "Conversation not found");
@@ -19,6 +21,11 @@ export const GET = handle(async (_req, { params }) => {
     where: { conversationId: id },
     orderBy: { timestamp: "asc" },
     take: 200,
+  });
+  const flowSubmissions = await prisma.flowSubmission.findMany({
+    where: { launch: { conversationId: id } },
+    include: { launch: { include: { flow: true } } },
+    orderBy: { completedAt: "asc" },
   });
 
   // Mark read.
@@ -34,6 +41,7 @@ export const GET = handle(async (_req, { params }) => {
       lastInboundAt: conversation.lastInboundAt,
     },
     messages: messages.map(serializeMessage),
+    flowSubmissions: flowSubmissions.map((submission) => presentFlowSubmission(submission, session.user.role === "ADMIN")),
   });
 });
 
@@ -41,6 +49,16 @@ const textSchema = z.object({ kind: z.literal("text"), text: z.string().min(1) }
 const templateSchema = z.object({
   kind: z.literal("template"),
   templateId: z.string(),
+});
+const flowSchema = z.object({
+  kind: z.literal("flow"),
+  flowId: z.string(),
+  cta: z.string().trim().min(1).max(20).default("Open form"),
+  body: z.string().trim().min(1).max(1024).optional(),
+  header: z.string().trim().max(60).optional(),
+  footer: z.string().trim().max(60).optional(),
+  entryScreen: z.string().optional(),
+  initialData: z.record(z.unknown()).optional(),
 });
 
 /**
@@ -100,22 +118,36 @@ export const POST = handle(async (req, { params }) => {
   // ---- Text / Template (JSON) ----
   const body = await req.json();
 
+  if (body.kind === "flow") {
+    if (!windowOpen) throw new HttpError(403, "This chat is outside the 24-hour window. Send an approved template with a Flow button instead.");
+    const parsed = flowSchema.parse(body);
+    const launched = await launchFlow({ ...parsed, to, sentById: session.user.id });
+    return ok(launched, 201);
+  }
+
   if (body.kind === "template") {
     const parsed = templateSchema.parse(body);
     const template = await prisma.template.findUnique({ where: { id: parsed.templateId } });
     if (!template) throw new HttpError(404, "Template not found");
     if (template.status !== "APPROVED") throw new HttpError(400, "Only approved templates can be sent.");
 
+    const prepared = await prepareTemplateFlowLaunch({ templateComponents: template.components as unknown as ApiComponent[], contactId: conversation.contact.id, conversationId: id });
     const content: OutboundContent = {
       kind: "template",
       templateId: template.id,
       templateName: template.name,
       language: template.language,
-      components: templateExampleComponents(template.components as unknown as ApiComponent[]),
+      components: [...templateExampleComponents(template.components as unknown as ApiComponent[]), ...(prepared ? [prepared.sendComponent] : [])],
       preview: `Template: ${template.name}`,
     };
-    const message = await sendMessage({ conversationId: id, to, sentById: session.user.id, content });
-    return ok(serializeMessage(message), 201);
+    try {
+      const message = await sendMessage({ conversationId: id, to, sentById: session.user.id, content });
+      if (prepared) await finishPreparedFlowLaunch(prepared.launchId, message.id);
+      return ok(serializeMessage(message), 201);
+    } catch (error) {
+      if (prepared) await finishPreparedFlowLaunch(prepared.launchId, undefined, error);
+      throw error;
+    }
   }
 
   // text

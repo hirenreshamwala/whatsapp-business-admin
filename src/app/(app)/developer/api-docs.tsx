@@ -294,6 +294,63 @@ export function ApiDocs({ baseUrl }: { baseUrl: string }) {
 }`,
   };
 
+  const flows: Endpoint[] = [
+    {
+      method: "GET",
+      path: "/api/v1/flows",
+      title: "List published Flows",
+      description: "Returns Flow IDs that are ready to launch. Use next_cursor for pagination.",
+      request: `curl -s ${baseUrl}/api/v1/flows \\
+  -H "X-API-Key: ${KEY}"`,
+      response: `{
+  "status": "success",
+  "data": [{ "id": "clx...", "name": "Lead form", "revision": 1, "meta_flow_id": "12345" }],
+  "next_cursor": null
+}`,
+    },
+    {
+      method: "POST",
+      path: "/api/v1/flows/{id}/launch",
+      title: "Launch a Flow",
+      description: "Sends a published Flow within the recipient's 24-hour service window. Initial data is encrypted at rest.",
+      request: `curl -s -X POST ${baseUrl}/api/v1/flows/FLOW_ID/launch \\
+  -H "X-API-Key: ${KEY}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "to": "919812345678",
+    "cta": "Open form",
+    "body": "Please complete your details",
+    "entry_screen": "CONTACT",
+    "data": { "customer_name": "Priya" }
+  }'`,
+      response: `{
+  "status": "success",
+  "launch_id": "clx...",
+  "message_id": "wamid...",
+  "conversation_id": "clx..."
+}`,
+    },
+    {
+      method: "GET",
+      path: "/api/v1/flow-launches/{id}",
+      title: "Get launch status",
+      description: "Returns sent, opened, completed, failed, or expired state without exposing the Flow token.",
+      response: `{ "status": "success", "launch": { "id": "clx...", "status": "completed", "submission_id": "clx..." } }`,
+    },
+    {
+      method: "GET",
+      path: "/api/v1/flow-submissions",
+      title: "List submissions",
+      description: "Returns completed responses. Filter with flow_id and paginate with cursor; fetch one by appending /{id}.",
+      request: `curl -s "${baseUrl}/api/v1/flow-submissions?flow_id=FLOW_ID" \\
+  -H "X-API-Key: ${KEY}"`,
+      response: `{
+  "status": "success",
+  "data": [{ "id": "clx...", "response": { "name": "Priya" }, "completedAt": "2026-08-01T10:00:00.000Z" }]
+}`,
+    },
+  ];
+
   return (
     <div className="max-w-3xl space-y-6">
       {/* Overview */}
@@ -364,6 +421,12 @@ export function ApiDocs({ baseUrl }: { baseUrl: string }) {
       <section className="space-y-4">
         <h2 className="text-sm font-semibold">Broadcast</h2>
         <EndpointCard ep={broadcast} />
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold">WhatsApp Flows</h2>
+        <p className="text-xs text-muted-foreground">Direct Flow launches follow the 24-hour rule. To initiate one later, use an approved template containing a Flow button through the existing messages endpoint.</p>
+        {flows.map((ep, i) => <EndpointCard key={i} ep={ep} />)}
       </section>
 
       {/* Errors */}

@@ -35,7 +35,20 @@ export type OutboundContent =
       mediaMime?: string;
       filename?: string;
     }
-  | { kind: "template"; templateId?: string; templateName: string; language: string; components?: unknown[]; preview?: string };
+  | { kind: "template"; templateId?: string; templateName: string; language: string; components?: unknown[]; preview?: string }
+  | {
+      kind: "flow";
+      flowId: string;
+      flowToken: string;
+      cta: string;
+      body: string;
+      header?: string;
+      footer?: string;
+      entryScreen?: string;
+      initialData?: Record<string, unknown>;
+      action: "navigate" | "data_exchange";
+      mode?: "draft" | "published";
+    };
 
 const MEDIA_TYPE_TO_ENUM: Record<string, MessageType> = {
   image: "IMAGE",
@@ -71,6 +84,31 @@ function buildPayload(to: string, content: OutboundContent): Record<string, unkn
           ...(content.components ? { components: content.components } : {}),
         },
       };
+    case "flow":
+      return {
+        ...base,
+        type: "interactive",
+        interactive: {
+          type: "flow",
+          ...(content.header ? { header: { type: "text", text: content.header } } : {}),
+          body: { text: content.body },
+          ...(content.footer ? { footer: { text: content.footer } } : {}),
+          action: {
+            name: "flow",
+            parameters: {
+              flow_message_version: "3",
+              flow_token: content.flowToken,
+              flow_id: content.flowId,
+              flow_cta: content.cta,
+              flow_action: content.action,
+              mode: content.mode || "published",
+              ...(content.action === "navigate" && content.entryScreen
+                ? { flow_action_payload: { screen: content.entryScreen, ...(content.initialData && Object.keys(content.initialData).length ? { data: content.initialData } : {}) } }
+                : {}),
+            },
+          },
+        },
+      };
   }
 }
 
@@ -79,6 +117,7 @@ function previewFor(content: OutboundContent): string {
     case "text": return content.text.slice(0, 140);
     case "media": return content.caption || `📎 ${content.mediaType}`;
     case "template": return content.preview || `Template: ${content.templateName}`;
+    case "flow": return `Flow: ${content.cta}`;
   }
 }
 
@@ -101,6 +140,8 @@ export async function sendMessage(opts: {
       ? "TEXT"
       : opts.content.kind === "template"
         ? "TEMPLATE"
+        : opts.content.kind === "flow"
+          ? "INTERACTIVE"
         : MEDIA_TYPE_TO_ENUM[opts.content.mediaType];
 
   // Create a PENDING row first so a failure is still recorded.
@@ -116,6 +157,7 @@ export async function sendMessage(opts: {
       mediaMime: opts.content.kind === "media" ? opts.content.mediaMime : undefined,
       mediaFilename: opts.content.kind === "media" ? opts.content.filename : undefined,
       templateId: opts.content.kind === "template" ? opts.content.templateId : undefined,
+      payload: opts.content.kind === "flow" ? { flowId: opts.content.flowId, cta: opts.content.cta } : undefined,
       sentById: opts.sentById,
     },
   });

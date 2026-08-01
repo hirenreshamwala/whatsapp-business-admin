@@ -11,6 +11,7 @@ import { createServer } from "node:http";
 import next from "next";
 import { parse } from "node:url";
 import { attachRealtime } from "./src/server/realtime";
+import { runFlowMaintenance } from "./src/lib/whatsapp/flow-submission";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOST || "0.0.0.0";
@@ -31,6 +32,18 @@ app.prepare().then(() => {
 
   // Attach the WebSocket server for realtime inbox updates.
   attachRealtime(server);
+
+  // Durable Flow webhook retries, launch expiry, and retention cleanup.
+  let maintainingFlows = false;
+  const maintainFlows = async () => {
+    if (maintainingFlows) return;
+    maintainingFlows = true;
+    try { await runFlowMaintenance(); }
+    catch (err) { console.error("Flow maintenance error:", err); }
+    finally { maintainingFlows = false; }
+  };
+  setInterval(maintainFlows, 60_000).unref();
+  maintainFlows();
 
   server.listen(port, hostname, () => {
     console.log(`▶ WhatsApp Business Admin ready on http://${hostname}:${port} (dev=${dev})`);

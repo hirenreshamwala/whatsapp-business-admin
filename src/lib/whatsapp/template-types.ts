@@ -7,13 +7,14 @@
 
 export type TemplateCategory = "MARKETING" | "UTILITY" | "AUTHENTICATION";
 export type HeaderType = "NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT";
-export type ButtonType = "QUICK_REPLY" | "URL" | "PHONE_NUMBER" | "COPY_CODE";
+export type ButtonType = "QUICK_REPLY" | "URL" | "PHONE_NUMBER" | "COPY_CODE" | "FLOW";
 
 export type BuilderButton =
   | { type: "QUICK_REPLY"; text: string }
   | { type: "URL"; text: string; url: string; example?: string }
   | { type: "PHONE_NUMBER"; text: string; phoneNumber: string }
-  | { type: "COPY_CODE"; example: string };
+  | { type: "COPY_CODE"; example: string }
+  | { type: "FLOW"; text: string; flowId: string; navigateScreen?: string; flowAction: "navigate" | "data_exchange" };
 
 export type TemplateBuilder = {
   name: string;
@@ -72,7 +73,8 @@ export type ApiButton =
   | { type: "QUICK_REPLY"; text: string }
   | { type: "URL"; text: string; url: string; example?: string[] }
   | { type: "PHONE_NUMBER"; text: string; phone_number: string }
-  | { type: "COPY_CODE"; example: string };
+  | { type: "COPY_CODE"; example: string }
+  | { type: "FLOW"; text: string; flow_id: string; navigate_screen?: string; flow_action: "navigate" | "data_exchange" };
 
 /** Convert the friendly builder model into the Graph API components array. */
 export function builderToComponents(b: TemplateBuilder): ApiComponent[] {
@@ -126,6 +128,8 @@ export function builderToComponents(b: TemplateBuilder): ApiComponent[] {
           return { type: "PHONE_NUMBER", text: btn.text, phone_number: btn.phoneNumber };
         case "COPY_CODE":
           return { type: "COPY_CODE", example: btn.example };
+        case "FLOW":
+          return { type: "FLOW", text: btn.text, flow_id: btn.flowId, ...(btn.navigateScreen ? { navigate_screen: btn.navigateScreen } : {}), flow_action: btn.flowAction };
       }
     });
     components.push({ type: "BUTTONS", buttons });
@@ -173,6 +177,8 @@ export function componentsToBuilder(
             return { type: "PHONE_NUMBER", text: btn.text, phoneNumber: btn.phone_number };
           case "COPY_CODE":
             return { type: "COPY_CODE", example: btn.example };
+          case "FLOW":
+            return { type: "FLOW", text: btn.text, flowId: btn.flow_id, navigateScreen: btn.navigate_screen, flowAction: btn.flow_action };
         }
       });
     }

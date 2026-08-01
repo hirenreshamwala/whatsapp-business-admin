@@ -76,6 +76,7 @@ export function validateTemplate(b: TemplateBuilder): FieldError[] {
   if (count("PHONE_NUMBER") > 1) errors.push({ field: "buttons", message: "Only one phone-number button." });
   if (count("URL") > 2) errors.push({ field: "buttons", message: "At most two URL buttons." });
   if (count("COPY_CODE") > 1) errors.push({ field: "buttons", message: "Only one copy-code button." });
+  if (count("FLOW") > 1) errors.push({ field: "buttons", message: "Only one Flow button." });
 
   b.buttons.forEach((btn, i) => {
     if (btn.type === "QUICK_REPLY" && !btn.text.trim())
@@ -92,6 +93,11 @@ export function validateTemplate(b: TemplateBuilder): FieldError[] {
     }
     if (btn.type === "COPY_CODE" && !btn.example.trim())
       errors.push({ field: `button-${i}`, message: "Copy-code button needs a sample code." });
+    if (btn.type === "FLOW") {
+      if (!btn.text.trim()) errors.push({ field: `button-${i}`, message: "Flow button needs text." });
+      if (!btn.flowId) errors.push({ field: `button-${i}`, message: "Flow button needs a published Flow." });
+      if (btn.flowAction === "navigate" && !btn.navigateScreen) errors.push({ field: `button-${i}`, message: "Navigate Flow buttons need an entry screen." });
+    }
   });
 
   return errors;

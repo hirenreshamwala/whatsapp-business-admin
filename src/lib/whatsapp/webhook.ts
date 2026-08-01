@@ -3,6 +3,7 @@ import { getWabaConfig } from "@/lib/settings";
 import { downloadInboundMedia } from "@/lib/whatsapp/media";
 import { publish } from "@/server/realtime";
 import type { MessageStatus, MessageType, TemplateStatus } from "@prisma/client";
+import { recordFlowSubmission, redactFlowWebhookPayload } from "@/lib/whatsapp/flow-submission";
 
 export { verifySignature } from "@/lib/whatsapp/signature";
 
@@ -20,7 +21,12 @@ type WaMessage = {
   sticker?: { id: string; mime_type?: string };
   location?: { latitude: number; longitude: number; name?: string; address?: string };
   button?: { text: string; payload: string };
-  interactive?: { type: string; button_reply?: { title: string }; list_reply?: { title: string } };
+  interactive?: {
+    type: string;
+    button_reply?: { title: string };
+    list_reply?: { title: string };
+    nfm_reply?: { name?: string; body?: string; response_json?: string };
+  };
   reaction?: { emoji: string; message_id: string };
   errors?: unknown[];
 };
@@ -66,7 +72,7 @@ function summarizeText(m: WaMessage): string {
     case "document": return m.document?.caption ?? `📄 ${m.document?.filename ?? "Document"}`;
     case "sticker": return "🌟 Sticker";
     case "location": return `📍 ${m.location?.name ?? "Location"}`;
-    case "interactive": return m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? "Reply";
+    case "interactive": return m.interactive?.nfm_reply?.body ?? m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? "Reply";
     case "button": return m.button?.text ?? "Reply";
     case "reaction": return `${m.reaction?.emoji ?? "❤️"}`;
     default: return "Message";
@@ -178,6 +184,11 @@ async function handleInboundMessage(
   }
 
   // Idempotency: skip if we already stored this wamid.
+  if (msg.type === "interactive" && msg.interactive?.type === "nfm_reply" && msg.interactive.nfm_reply?.response_json) {
+    await recordFlowSubmission({ waMessageId: msg.id, responseJson: msg.interactive.nfm_reply.response_json }).catch((error) => {
+      console.warn("Could not associate WhatsApp Flow completion:", error instanceof Error ? error.message : error);
+    });
+  }
   const existing = await prisma.message.findUnique({ where: { waMessageId: msg.id } });
   if (existing) return `dup ${msg.id}`;
 
@@ -193,7 +204,7 @@ async function handleInboundMessage(
       mediaPath,
       mediaMime,
       mediaFilename,
-      payload: msg as object,
+      payload: redactFlowWebhookPayload(msg) as object,
       timestamp: ts,
     },
   });
@@ -273,6 +284,7 @@ export function serializeMessage(m: {
   mediaMime: string | null;
   mediaFilename: string | null;
   timestamp: Date;
+  waMessageId?: string | null;
 }) {
   return {
     id: m.id,
@@ -286,5 +298,6 @@ export function serializeMessage(m: {
     mediaMime: m.mediaMime,
     mediaFilename: m.mediaFilename,
     timestamp: m.timestamp.toISOString(),
+    waMessageId: m.waMessageId ?? null,
   };
 }

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Check,
   ChevronLeft,
@@ -411,6 +411,7 @@ function ButtonsStep({
   set: (patch: Partial<TemplateBuilder>) => void;
   errors: FieldError[];
 }) {
+  const { data: publishedFlows = [] } = useQuery({ queryKey: ["flows", "published"], queryFn: () => apiFetch<{ id: string; name: string; activeVersion: { metaFlowId: string; flowJson: { screens: { id: string }[] } } }[]>("/api/flows?published=true") });
   function add(type: BuilderButton["type"]) {
     const b: BuilderButton =
       type === "QUICK_REPLY"
@@ -419,7 +420,9 @@ function ButtonsStep({
           ? { type, text: "", url: "" }
           : type === "PHONE_NUMBER"
             ? { type, text: "", phoneNumber: "" }
-            : { type, example: "" };
+            : type === "COPY_CODE"
+              ? { type, example: "" }
+              : { type: "FLOW", text: "", flowId: "", flowAction: "navigate" };
     set({ buttons: [...builder.buttons, b] });
   }
   function update(i: number, patch: Partial<BuilderButton>) {
@@ -444,6 +447,9 @@ function ButtonsStep({
         </Button>
         <Button variant="outline" size="sm" onClick={() => add("COPY_CODE")}>
           <Plus className="h-3.5 w-3.5" /> Copy code
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => add("FLOW")}>
+          <Plus className="h-3.5 w-3.5" /> WhatsApp Flow
         </Button>
       </div>
 
@@ -485,6 +491,21 @@ function ButtonsStep({
             )}
             {btn.type === "COPY_CODE" && (
               <Input value={btn.example} onChange={(e) => update(i, { example: e.target.value })} placeholder="Sample code, e.g. SAVE20" />
+            )}
+            {btn.type === "FLOW" && (
+              <>
+                <Select value={btn.flowId || undefined} onValueChange={(flowId) => {
+                  const flow = publishedFlows.find((item) => item.activeVersion.metaFlowId === flowId);
+                  update(i, { flowId, navigateScreen: flow?.activeVersion.flowJson.screens[0]?.id });
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Choose a published Flow" /></SelectTrigger>
+                  <SelectContent>{publishedFlows.map((flow) => <SelectItem key={flow.id} value={flow.activeVersion.metaFlowId}>{flow.name}</SelectItem>)}</SelectContent>
+                </Select>
+                <Select value={btn.flowAction} onValueChange={(flowAction) => update(i, { flowAction: flowAction as "navigate" | "data_exchange" })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="navigate">Navigate to screen</SelectItem><SelectItem value="data_exchange">Initialize from endpoint</SelectItem></SelectContent>
+                </Select>
+                {btn.flowAction === "navigate" && <Input value={btn.navigateScreen || ""} onChange={(e) => update(i, { navigateScreen: e.target.value })} placeholder="Entry screen ID" />}
+              </>
             )}
             <ErrorLine msg={errors.find((e) => e.field === `button-${i}`)?.message} />
           </div>

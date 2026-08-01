@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Search, Send, Paperclip, Check, CheckCheck, Clock, AlertCircle, MessageSquare, FileText, LayoutTemplate,
+  Search, Send, Paperclip, Check, CheckCheck, Clock, AlertCircle, MessageSquare, FileText, LayoutTemplate, Workflow,
 } from "lucide-react";
 import { apiFetch } from "@/lib/fetcher";
 import { cn, formatTime } from "@/lib/utils";
@@ -36,10 +36,13 @@ type Msg = {
   mediaMime: string | null;
   mediaFilename: string | null;
   timestamp: string;
+  waMessageId: string | null;
 };
+type FlowSubmission = { id: string; waMessageId: string | null; flow: { name: string }; response: Record<string, unknown> | null; purgedAt: string | null; completedAt: string };
 type Thread = {
   conversation: { id: string; contact: Contact; windowOpen: boolean; lastInboundAt: string | null };
   messages: Msg[];
+  flowSubmissions: FlowSubmission[];
 };
 
 function displayName(c: Contact) {
@@ -147,6 +150,7 @@ function ThreadPane({ conversationId }: { conversationId: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState("");
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showFlows, setShowFlows] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading } = useQuery({
@@ -200,6 +204,11 @@ function ThreadPane({ conversationId }: { conversationId: string }) {
     },
     onError: (e: Error) => toast({ variant: "destructive", title: "Not sent", description: e.message }),
   });
+  const sendFlow = useMutation({
+    mutationFn: (flowId: string) => apiFetch(`/api/conversations/${conversationId}/messages`, { method: "POST", body: JSON.stringify({ kind: "flow", flowId, cta: "Open form" }) }),
+    onSuccess: () => { setShowFlows(false); invalidate(); },
+    onError: (e: Error) => toast({ variant: "destructive", title: "Flow not sent", description: e.message }),
+  });
 
   const windowInfo = useMemo(() => {
     if (!data) return null;
@@ -234,9 +243,7 @@ function ThreadPane({ conversationId }: { conversationId: string }) {
 
       {/* Messages */}
       <div ref={scrollRef} className="wa-wallpaper min-h-0 flex-1 space-y-1.5 overflow-auto scroll-thin p-4">
-        {data.messages.map((m) => (
-          <MessageBubble key={m.id} m={m} />
-        ))}
+        {data.messages.map((m) => <div key={m.id}><MessageBubble m={m} />{data.flowSubmissions.filter((submission) => submission.waMessageId === m.waMessageId).map((submission) => <FlowSubmissionCard key={submission.id} submission={submission} />)}</div>)}
         {data.messages.length === 0 && (
           <div className="mt-10 text-center text-xs text-muted-foreground">No messages yet. Say hello 👋</div>
         )}
@@ -259,6 +266,7 @@ function ThreadPane({ conversationId }: { conversationId: string }) {
             <Button variant="ghost" size="icon" title="Attach" onClick={() => fileRef.current?.click()} disabled={sendMedia.isPending}>
               <Paperclip className="h-4 w-4" />
             </Button>
+            <Button variant="ghost" size="icon" title="Send Flow" onClick={() => setShowFlows(true)}><Workflow className="h-4 w-4" /></Button>
             <Input
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -292,8 +300,13 @@ function ThreadPane({ conversationId }: { conversationId: string }) {
         onPick={(id) => sendTemplate.mutate(id)}
         pending={sendTemplate.isPending}
       />
+      <FlowPicker open={showFlows} onClose={() => setShowFlows(false)} onPick={(id) => sendFlow.mutate(id)} pending={sendFlow.isPending} />
     </div>
   );
+}
+
+function FlowSubmissionCard({ submission }: { submission: FlowSubmission }) {
+  return <div className="ml-2 mt-1 max-w-md rounded-lg border border-emerald-200 bg-white p-3 text-zinc-900 shadow-sm dark:border-emerald-900 dark:bg-[#202c33] dark:text-zinc-50"><div className="mb-2 flex items-center gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400"><Workflow className="h-4 w-4" /> {submission.flow.name} submitted</div>{submission.response ? <div className="space-y-1">{Object.entries(submission.response).map(([key, value]) => <div key={key} className="grid grid-cols-[110px_1fr] gap-2 text-xs"><span className="font-medium">{key}</span><span className="break-words text-muted-foreground">{typeof value === "object" ? JSON.stringify(value) : String(value)}</span></div>)}</div> : <div className="text-xs text-muted-foreground">Response data has been purged.</div>}</div>;
 }
 
 function MessageBubble({ m }: { m: Msg }) {
@@ -392,4 +405,10 @@ function TemplatePicker({
       </DialogContent>
     </Dialog>
   );
+}
+
+type PublishedFlow = { id: string; name: string; categories: string[] };
+function FlowPicker({ open, onClose, onPick, pending }: { open: boolean; onClose: () => void; onPick: (id: string) => void; pending: boolean }) {
+  const { data: flows = [] } = useQuery({ queryKey: ["flows", "published"], queryFn: () => apiFetch<PublishedFlow[]>("/api/flows?published=true"), enabled: open });
+  return <Dialog open={open} onOpenChange={(value) => !value && onClose()}><DialogContent><DialogHeader><DialogTitle>Send a WhatsApp Flow</DialogTitle></DialogHeader><div className="max-h-80 space-y-1 overflow-auto">{flows.map((flow) => <button key={flow.id} disabled={pending} onClick={() => onPick(flow.id)} className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left hover:border-primary/40 disabled:opacity-50"><span className="text-sm font-medium">{flow.name}</span><Badge variant="outline">{flow.categories[0]?.replaceAll("_", " ")}</Badge></button>)}{!flows.length && <p className="py-6 text-center text-xs text-muted-foreground">No published Flows are available.</p>}</div></DialogContent></Dialog>;
 }

@@ -19,7 +19,7 @@ export type GraphRequest = {
   method: "GET" | "POST" | "DELETE";
   /** Path after the API version, e.g. "/{phoneNumberId}/messages" or "/{wabaId}/message_templates". */
   path: string;
-  body?: unknown;
+  body?: unknown | FormData;
   query?: Record<string, string | number | undefined>;
   /** For linking the ApiLog row to a domain object. */
   related?: { type: string; id?: string };
@@ -53,13 +53,14 @@ export async function graphFetch<T = unknown>(req: GraphRequest): Promise<T> {
   let ok = false;
 
   try {
+    const multipart = req.body instanceof FormData;
     const res = await fetch(url, {
       method: req.method,
       headers: {
         Authorization: `Bearer ${config.accessToken}`,
-        ...(req.body ? { "Content-Type": "application/json" } : {}),
+        ...(req.body && !multipart ? { "Content-Type": "application/json" } : {}),
       },
-      body: req.body ? JSON.stringify(req.body) : undefined,
+      body: req.body ? (multipart ? (req.body as FormData) : JSON.stringify(req.body)) : undefined,
     });
     responseStatus = res.status;
     const text = await res.text();
@@ -114,8 +115,21 @@ function safeJson(text: string): unknown {
 /** Prisma Json can't store `undefined`; coerce to null. Also defensively drops any token field. */
 function sanitizeBody(body: unknown): object | undefined {
   if (body === undefined || body === null) return undefined;
+  if (body instanceof FormData) {
+    return { multipart: true, fields: Array.from(body.keys()).filter((key) => key !== "file") };
+  }
   try {
-    return JSON.parse(JSON.stringify(body)) as object;
+    const copy = JSON.parse(JSON.stringify(body)) as Record<string, unknown>;
+    // Flow tokens and initial/form data may contain credentials or PII.
+    const interactive = copy.interactive as { action?: { parameters?: Record<string, unknown> } } | undefined;
+    const params = interactive?.action?.parameters;
+    if (params?.flow_token) params.flow_token = "[REDACTED]";
+    if (params?.flow_action_payload) params.flow_action_payload = "[REDACTED]";
+    const template = copy.template as { components?: unknown[] } | undefined;
+    if (template?.components && JSON.stringify(template.components).includes("flow_token")) {
+      template.components = ["[REDACTED FLOW PARAMETERS]"];
+    }
+    return copy;
   } catch {
     return undefined;
   }

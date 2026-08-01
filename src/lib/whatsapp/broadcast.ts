@@ -5,6 +5,7 @@ import { ensureConversation, sendMessage } from "@/lib/whatsapp/send";
 import { templateExampleComponents } from "@/lib/whatsapp/template-service";
 import { WhatsAppApiError } from "@/lib/whatsapp/client";
 import type { ApiComponent } from "@/lib/whatsapp/template-types";
+import { finishPreparedFlowLaunch, prepareTemplateFlowLaunch } from "@/lib/whatsapp/flow-launch";
 
 /**
  * Single in-process queue shared across requests (kept on globalThis so Next's
@@ -39,8 +40,15 @@ export async function runBroadcast(broadcastId: string): Promise<void> {
 
   for (const recipient of pending) {
     queue().add(async () => {
+      let preparedLaunchId: string | undefined;
       try {
-        const { conversation } = await ensureConversation(recipient.contact.waId, recipient.contact.name ?? undefined);
+        const { contact, conversation } = await ensureConversation(recipient.contact.waId, recipient.contact.name ?? undefined);
+        const prepared = await prepareTemplateFlowLaunch({
+          templateComponents: broadcast.template.components as unknown as ApiComponent[],
+          contactId: contact.id,
+          conversationId: conversation.id,
+        });
+        preparedLaunchId = prepared?.launchId;
         const message = await sendMessage({
           conversationId: conversation.id,
           to: recipient.contact.waId,
@@ -50,16 +58,18 @@ export async function runBroadcast(broadcastId: string): Promise<void> {
             templateId: broadcast.templateId,
             templateName: broadcast.template.name,
             language: broadcast.template.language,
-            components,
+            components: [...components, ...(prepared ? [prepared.sendComponent] : [])],
             preview: `Broadcast: ${broadcast.name}`,
           },
         });
+        if (prepared) await finishPreparedFlowLaunch(prepared.launchId, message.id);
         await prisma.broadcastRecipient.update({
           where: { id: recipient.id },
           data: { status: "SENT", waMessageId: message.waMessageId },
         });
         await prisma.broadcast.update({ where: { id: broadcastId }, data: { sentCount: { increment: 1 } } });
       } catch (e) {
+        if (preparedLaunchId) await finishPreparedFlowLaunch(preparedLaunchId, undefined, e);
         await prisma.broadcastRecipient.update({
           where: { id: recipient.id },
           data: { status: "FAILED", error: e instanceof Error ? e.message : String(e) },

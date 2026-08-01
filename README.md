@@ -18,6 +18,9 @@ server hosting a **WebSocket** feed for realtime inbox updates, Tailwind + shadc
   outside). Live updates over WebSocket.
 - **Broadcasts** — send an approved template to all contacts or a tag; in-process rate-limited
   queue; per-recipient delivery status from webhooks.
+- **WhatsApp Flows** — visual + JSON multi-screen form builder, Meta validation/publishing,
+  immutable version cloning, encrypted dynamic data endpoints, inbox/template/API launches,
+  searchable submissions, retention controls, and signed completion webhooks.
 - **Contacts** — auto-created on inbound, plus manual add; names, tags, notes.
 - **Webhooks** — signature-verified (`X-Hub-Signature-256`); raw payload stored first, then
   processed (messages, statuses, template status updates).
@@ -92,6 +95,8 @@ npx tsc --noEmit  # typecheck
   NextAuth session cookie.
 - **Media** is stored behind a `MediaStore` interface (local filesystem by default; S3-swappable)
   and served through an authenticated route.
+- **Flow responses** are encrypted at rest and removed on each Flow's retention schedule. Dynamic
+  connector credentials and the Meta Flow private key are encrypted with `ENCRYPTION_KEY`.
 - **Broadcasts** use an in-process `p-queue` (no Redis) sized for a single self-hosted instance.
 
 See `docs/2026-07-24-whatsapp-business-admin-design.md` for the full design.

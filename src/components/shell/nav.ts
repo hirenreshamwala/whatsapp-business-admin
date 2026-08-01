@@ -8,6 +8,8 @@ import {
   Settings,
   Code2,
   UserCog,
+  ListChecks,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 
@@ -23,6 +25,8 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/inbox", label: "Inbox", icon: MessageSquare },
   { href: "/contacts", label: "Contacts", icon: Users },
   { href: "/templates", label: "Templates", icon: LayoutTemplate, adminOnly: true },
+  { href: "/flows", label: "Flows", icon: Workflow, adminOnly: true },
+  { href: "/submissions", label: "Submissions", icon: ListChecks },
   { href: "/broadcasts", label: "Broadcasts", icon: Megaphone, adminOnly: true },
   { href: "/logs", label: "Logs", icon: ScrollText, adminOnly: true },
   { href: "/settings", label: "Settings", icon: Settings, adminOnly: true },

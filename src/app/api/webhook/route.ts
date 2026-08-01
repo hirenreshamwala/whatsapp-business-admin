@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getWabaConfig } from "@/lib/settings";
 import { verifySignature, processWebhook } from "@/lib/whatsapp/webhook";
+import { redactFlowWebhookPayload } from "@/lib/whatsapp/flow-submission";
 
 /** Meta webhook verification handshake. */
 export async function GET(req: Request) {
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
 
   // Persist the raw event up front.
   const event = await prisma.webhookEvent.create({
-    data: { payload: payload as object, signatureValid, processedOk: false },
+    data: { payload: redactFlowWebhookPayload(payload) as object, signatureValid, processedOk: false },
   });
 
   // If an app secret is configured, reject unsigned/invalid events (but keep the record).

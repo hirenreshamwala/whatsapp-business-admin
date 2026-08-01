@@ -6,6 +6,7 @@ import { storeFromLink } from "@/lib/whatsapp/media";
 import { buildTemplateComponents } from "@/lib/whatsapp/template-params";
 import { templateExampleComponents } from "@/lib/whatsapp/template-service";
 import type { ApiComponent } from "@/lib/whatsapp/template-types";
+import { finishPreparedFlowLaunch, prepareTemplateFlowLaunch } from "@/lib/whatsapp/flow-launch";
 
 const mediaSchema = z.object({
   link: z.string().url().optional(),
@@ -44,6 +45,7 @@ const schema = z.object({
   header_media: headerMediaSchema.optional(),
   buttons: z.array(buttonSchema).optional(),
   components: z.array(z.unknown()).optional(),
+  flow_data: z.record(z.unknown()).optional(),
 });
 
 const MEDIA_TYPES = ["image", "video", "audio", "document"] as const;
@@ -65,7 +67,7 @@ export const POST = v1Handle(async (req) => {
   await requireApiKey(req, body);
 
   const type = body.type ?? (body.template ? "template" : body.media ? "image" : "text");
-  const { conversation } = await ensureConversation(body.to);
+  const { contact, conversation } = await ensureConversation(body.to);
 
   const windowOpen = async () => {
     const fresh = await prisma.conversation.findUnique({ where: { id: conversation.id } });
@@ -144,18 +146,39 @@ export const POST = v1Handle(async (req) => {
   if (components.length === 0) {
     components = templateExampleComponents(template.components as unknown as ApiComponent[]);
   }
-
-  const msg = await sendMessage({
+  const prepared = await prepareTemplateFlowLaunch({
+    templateComponents: template.components as unknown as ApiComponent[],
+    contactId: contact.id,
     conversationId: conversation.id,
-    to: body.to,
-    content: {
-      kind: "template",
-      templateId: template.id,
-      templateName: template.name,
-      language: template.language,
-      components,
-      preview: `Template: ${template.name}`,
-    },
+    initialData: body.flow_data,
   });
-  return apiOk({ message_id: msg.waMessageId, id: msg.id, to: body.to }, 201);
+  if (prepared) {
+    // The server always owns Flow tokens; never accept a caller-supplied token
+    // through raw template components.
+    components = components.filter((component) => {
+      const value = component as { type?: string; sub_type?: string };
+      return !(value.type === "button" && value.sub_type === "flow");
+    });
+    components.push(prepared.sendComponent);
+  }
+
+  try {
+    const msg = await sendMessage({
+      conversationId: conversation.id,
+      to: body.to,
+      content: {
+        kind: "template",
+        templateId: template.id,
+        templateName: template.name,
+        language: template.language,
+        components,
+        preview: `Template: ${template.name}`,
+      },
+    });
+    if (prepared) await finishPreparedFlowLaunch(prepared.launchId, msg.id);
+    return apiOk({ message_id: msg.waMessageId, id: msg.id, to: body.to, ...(prepared ? { flow_launch_id: prepared.launchId } : {}) }, 201);
+  } catch (error) {
+    if (prepared) await finishPreparedFlowLaunch(prepared.launchId, undefined, error);
+    throw error;
+  }
 });
