@@ -52,6 +52,14 @@ export function validateFlowJson(flow: FlowJson): FlowValidationIssue[] {
         names.add(component.name);
       }
       if (component.type === "Footer") hasFooter = true;
+      if (component.type === "If" && (component.condition === undefined || component.condition === "")) warning(`${path}.condition`, "If condition is empty.");
+      if (component.type === "Switch") {
+        if (component.value === undefined || component.value === "") warning(`${path}.value`, "Switch value expression is empty.");
+        const cases = component.cases;
+        if (cases && typeof cases === "object" && Object.keys(cases as Record<string, unknown>).some((key) => !key.trim())) {
+          error(`${path}.cases`, "Switch case keys cannot be blank.");
+        }
+      }
       const action = component["on-click-action"] || component["on-select-action"];
       if (action && typeof action === "object" && (action as { name?: string }).name === "data_exchange") usesEndpoint = true;
     }, `${base}.layout.children`);
