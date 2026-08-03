@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -13,7 +13,10 @@ import {
   AlertCircle,
   Megaphone,
   Bell,
+  Bold as BoldIcon,
+  Italic as ItalicIcon,
   ShieldCheck,
+  Strikethrough,
 } from "lucide-react";
 import { apiFetch } from "@/lib/fetcher";
 import { cn } from "@/lib/utils";
@@ -25,6 +28,7 @@ import {
   variableNumbers,
 } from "@/lib/whatsapp/template-types";
 import { validateTemplate, type FieldError } from "@/lib/whatsapp/template-validate";
+import { selectionHasWhatsAppFormat, toggleWhatsAppFormat, type WhatsAppTextFormat } from "@/lib/whatsapp/format";
 import { TEMPLATE_LANGUAGES } from "@/lib/whatsapp/languages";
 import { TemplatePreview } from "@/components/whatsapp/template-preview";
 import { PageHeader } from "@/components/shell/page-header";
@@ -335,11 +339,44 @@ function MediaUpload({
 function BodyStep({ builder, set, errorFor }: StepProps) {
   const vars = variableNumbers(builder.body.text);
   const setBody = (patch: Partial<TemplateBuilder["body"]>) => set({ body: { ...builder.body, ...patch } });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const [formatError, setFormatError] = useState<string | null>(null);
 
   function insertVariable() {
     const next = vars.length + 1;
     setBody({ text: `${builder.body.text}{{${next}}}` });
   }
+
+  function rememberSelection() {
+    const textarea = textareaRef.current;
+    if (textarea) setSelection({ start: textarea.selectionStart, end: textarea.selectionEnd });
+  }
+
+  function applyFormat(format: WhatsAppTextFormat) {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const result = toggleWhatsAppFormat(builder.body.text, textarea.selectionStart, textarea.selectionEnd, format, 1024);
+    if (result.reason === "max-length") {
+      setFormatError("Formatting would exceed the 1,024-character body limit.");
+      return;
+    }
+    setFormatError(null);
+    if (!result.changed) return;
+    setBody({ text: result.text });
+    setSelection({ start: result.selectionStart, end: result.selectionEnd });
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(result.selectionStart, result.selectionEnd);
+    });
+  }
+
+  const hasSelection = selection.start !== selection.end;
+  const formats: { format: WhatsAppTextFormat; label: string; icon: React.ReactNode }[] = [
+    { format: "bold", label: "Bold", icon: <BoldIcon className="h-3.5 w-3.5" /> },
+    { format: "italic", label: "Italic", icon: <ItalicIcon className="h-3.5 w-3.5" /> },
+    { format: "strike", label: "Strike", icon: <Strikethrough className="h-3.5 w-3.5" /> },
+  ];
 
   return (
     <div className="max-w-xl space-y-4">
@@ -350,9 +387,18 @@ function BodyStep({ builder, set, errorFor }: StepProps) {
             <Plus className="h-3.5 w-3.5" /> Insert variable
           </Button>
         </div>
+        <div className="flex items-center gap-1 rounded-md border bg-muted/30 p-1" role="toolbar" aria-label="Message formatting">
+          {formats.map(({ format, label, icon }) => {
+            const active = hasSelection && selectionHasWhatsAppFormat(builder.body.text, selection.start, selection.end, format);
+            return <Button key={format} type="button" variant={active ? "secondary" : "ghost"} size="sm" disabled={!hasSelection} aria-pressed={active} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat(format)} className="h-7 gap-1.5 px-2 text-xs">{icon}{label}</Button>;
+          })}
+          {!hasSelection && <span className="ml-1 text-[10px] text-muted-foreground">Select text to format</span>}
+        </div>
         <Textarea
+          ref={textareaRef}
           value={builder.body.text}
-          onChange={(e) => setBody({ text: e.target.value })}
+          onChange={(e) => { setBody({ text: e.target.value }); setFormatError(null); }}
+          onSelect={rememberSelection}
           rows={6}
           maxLength={1024}
           placeholder={"Hi {{1}}, your order {{2}} has shipped and will arrive by {{3}}."}
@@ -360,6 +406,7 @@ function BodyStep({ builder, set, errorFor }: StepProps) {
         <p className="text-[11px] text-muted-foreground">
           Use *bold*, _italic_, ~strike~. Add variables like {"{{1}}"} for personalised values.
         </p>
+        {formatError && <p className="text-xs text-destructive">{formatError}</p>}
         <ErrorLine msg={errorFor("body")} />
       </div>
 
