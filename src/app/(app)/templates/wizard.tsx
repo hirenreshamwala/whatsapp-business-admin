@@ -26,6 +26,7 @@ import {
   type HeaderType,
   emptyBuilder,
   variableNumbers,
+  extractVariables,
 } from "@/lib/whatsapp/template-types";
 import { validateTemplate, type FieldError } from "@/lib/whatsapp/template-validate";
 import { selectionHasWhatsAppFormat, toggleWhatsAppFormat, type WhatsAppTextFormat } from "@/lib/whatsapp/format";
@@ -238,7 +239,7 @@ function HeaderStep({ builder, set, errorFor }: StepProps) {
     { value: "DOCUMENT", label: "Document" },
   ];
   const setHeader = (patch: Partial<TemplateBuilder["header"]>) => set({ header: { ...builder.header, ...patch } });
-  const headerVars = variableNumbers(builder.header.text ?? "");
+  const headerTokens = extractVariables(builder.header.text ?? "");
 
   return (
     <div className="max-w-xl space-y-4">
@@ -272,9 +273,9 @@ function HeaderStep({ builder, set, errorFor }: StepProps) {
             />
             <p className="text-[11px] text-muted-foreground">Up to 60 characters, at most one variable.</p>
           </div>
-          {headerVars.length === 1 && (
+          {headerTokens.length === 1 && (
             <div className="space-y-1">
-              <Label>Sample value for {"{{1}}"}</Label>
+              <Label>{`Sample value for {{${headerTokens[0]}}}`}</Label>
               <Input
                 value={builder.header.textExample ?? ""}
                 onChange={(e) => setHeader({ textExample: e.target.value })}
@@ -337,15 +338,36 @@ function MediaUpload({
 }
 
 function BodyStep({ builder, set, errorFor }: StepProps) {
-  const vars = variableNumbers(builder.body.text);
+  const tokens = extractVariables(builder.body.text);
   const setBody = (patch: Partial<TemplateBuilder["body"]>) => set({ body: { ...builder.body, ...patch } });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [selection, setSelection] = useState({ start: 0, end: 0 });
   const [formatError, setFormatError] = useState<string | null>(null);
+  const [varName, setVarName] = useState("");
 
   function insertVariable() {
-    const next = vars.length + 1;
-    setBody({ text: `${builder.body.text}{{${next}}}` });
+    const textarea = textareaRef.current;
+    const numericCount = tokens.filter((t) => /^\d+$/.test(t)).length;
+    const token = varName.trim() || String(numericCount + 1);
+    const insertText = `{{${token}}}`;
+
+    if (!textarea) {
+      setBody({ text: `${builder.body.text}${insertText}` });
+      setVarName("");
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const nextText = builder.body.text.slice(0, start) + insertText + builder.body.text.slice(end);
+    setBody({ text: nextText });
+    setVarName("");
+    const cursor = start + insertText.length;
+    setSelection({ start: cursor, end: cursor });
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(cursor, cursor);
+    });
   }
 
   function rememberSelection() {
@@ -381,11 +403,19 @@ function BodyStep({ builder, set, errorFor }: StepProps) {
   return (
     <div className="max-w-xl space-y-4">
       <div className="space-y-1">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <Label>Message body</Label>
-          <Button variant="outline" size="sm" onClick={insertVariable}>
-            <Plus className="h-3.5 w-3.5" /> Insert variable
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Input
+              value={varName}
+              onChange={(e) => setVarName(e.target.value.toLowerCase().replace(/[^a-z_]/g, ""))}
+              placeholder="name (optional)"
+              className="h-8 w-32 text-xs"
+            />
+            <Button variant="outline" size="sm" onClick={insertVariable}>
+              <Plus className="h-3.5 w-3.5" /> Insert variable
+            </Button>
+          </div>
         </div>
         <div className="flex items-center gap-1 rounded-md border bg-muted/30 p-1" role="toolbar" aria-label="Message formatting">
           {formats.map(({ format, label, icon }) => {
@@ -404,26 +434,23 @@ function BodyStep({ builder, set, errorFor }: StepProps) {
           placeholder={"Hi {{1}}, your order {{2}} has shipped and will arrive by {{3}}."}
         />
         <p className="text-[11px] text-muted-foreground">
-          Use *bold*, _italic_, ~strike~. Add variables like {"{{1}}"} for personalised values.
+          Use *bold*, _italic_, ~strike~. Insert variables like {"{{1}}"} or a named one like {"{{code}}"} —
+          type a name above before clicking Insert, or leave it blank for the next number. Inserted at the cursor.
         </p>
         {formatError && <p className="text-xs text-destructive">{formatError}</p>}
         <ErrorLine msg={errorFor("body")} />
       </div>
 
-      {vars.length > 0 && (
+      {tokens.length > 0 && (
         <div className="space-y-2 rounded-md border p-3">
           <Label>Sample values (used for preview and Meta review)</Label>
-          {vars.map((n, i) => (
-            <div key={n} className="flex items-center gap-2">
-              <Badge variant="secondary" className="font-mono">{`{{${n}}}`}</Badge>
+          {tokens.map((token) => (
+            <div key={token} className="flex items-center gap-2">
+              <Badge variant="secondary" className="font-mono">{`{{${token}}}`}</Badge>
               <Input
-                value={builder.body.examples[i] ?? ""}
-                onChange={(e) => {
-                  const examples = [...builder.body.examples];
-                  examples[i] = e.target.value;
-                  setBody({ examples });
-                }}
-                placeholder={`Example for {{${n}}}`}
+                value={builder.body.examples[token] ?? ""}
+                onChange={(e) => setBody({ examples: { ...builder.body.examples, [token]: e.target.value } })}
+                placeholder={`Example for {{${token}}}`}
               />
             </div>
           ))}

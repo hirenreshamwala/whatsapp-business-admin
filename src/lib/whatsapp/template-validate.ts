@@ -1,4 +1,4 @@
-import { type TemplateBuilder, variableNumbers } from "@/lib/whatsapp/template-types";
+import { type TemplateBuilder, variableNumbers, extractVariables, isNamedToken } from "@/lib/whatsapp/template-types";
 
 export type FieldError = { field: string; message: string };
 
@@ -29,11 +29,11 @@ export function validateTemplate(b: TemplateBuilder): FieldError[] {
     } else if (text.length > 60) {
       errors.push({ field: "header", message: "Header text is too long (max 60)." });
     }
-    const vars = variableNumbers(text);
-    if (vars.length > 1) {
+    const headerTokens = extractVariables(text);
+    if (headerTokens.length > 1) {
       errors.push({ field: "header", message: "Header text supports at most one variable." });
     }
-    if (vars.length === 1 && !(b.header.textExample ?? "").trim()) {
+    if (headerTokens.length === 1 && !(b.header.textExample ?? "").trim()) {
       errors.push({ field: "header", message: "Provide a sample value for the header variable." });
     }
   }
@@ -48,17 +48,37 @@ export function validateTemplate(b: TemplateBuilder): FieldError[] {
   } else if (bodyText.length > 1024) {
     errors.push({ field: "body", message: "Body is too long (max 1024)." });
   }
-  const bodyVars = variableNumbers(bodyText);
-  // Variables must be sequential 1..n
-  for (let i = 0; i < bodyVars.length; i++) {
-    if (bodyVars[i] !== i + 1) {
-      errors.push({ field: "body", message: `Variables must be numbered sequentially starting at 1 (found {{${bodyVars[i]}}}).` });
-      break;
+
+  // Variables: a template is either fully positional ({{1}}, {{2}}…) or fully
+  // named ({{code}}, {{first_name}}…) — Meta doesn't allow mixing the two.
+  const headerTokens = b.header.type === "TEXT" ? extractVariables(b.header.text ?? "") : [];
+  const bodyTokens = extractVariables(bodyText);
+  const allTokens = [...headerTokens, ...bodyTokens];
+  const hasNamed = allTokens.some(isNamedToken);
+  const hasPositional = allTokens.some((t) => !isNamedToken(t));
+
+  if (hasNamed && hasPositional) {
+    errors.push({ field: "body", message: "Can't mix numbered variables like {{1}} and named variables like {{code}} in the same template." });
+  } else if (hasNamed) {
+    for (const token of bodyTokens) {
+      if (!/^[a-z][a-z_]*$/.test(token)) {
+        errors.push({ field: "body", message: "Variable names must be lowercase letters and underscores only (e.g. {{customer_name}})." });
+        break;
+      }
+    }
+  } else {
+    // Positional: must be sequential 1..n
+    const bodyVars = variableNumbers(bodyText);
+    for (let i = 0; i < bodyVars.length; i++) {
+      if (bodyVars[i] !== i + 1) {
+        errors.push({ field: "body", message: `Variables must be numbered sequentially starting at 1 (found {{${bodyVars[i]}}}).` });
+        break;
+      }
     }
   }
-  for (let i = 0; i < bodyVars.length; i++) {
-    if (!(b.body.examples[i] ?? "").trim()) {
-      errors.push({ field: "body", message: `Provide a sample value for {{${i + 1}}}.` });
+  for (const token of bodyTokens) {
+    if (!(b.body.examples[token] ?? "").trim()) {
+      errors.push({ field: "body", message: `Provide a sample value for {{${token}}}.` });
       break;
     }
   }

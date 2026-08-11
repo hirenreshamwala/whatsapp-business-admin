@@ -1,7 +1,7 @@
 "use client";
 
 import { Image as ImageIcon, Film, FileText, Phone, ExternalLink, Copy, Reply } from "lucide-react";
-import type { TemplateBuilder } from "@/lib/whatsapp/template-types";
+import { type TemplateBuilder, extractVariables } from "@/lib/whatsapp/template-types";
 import { renderTemplateText } from "@/lib/whatsapp/format";
 
 // Fixed sample time so the preview renders identically on server and client
@@ -10,7 +10,9 @@ const SAMPLE_TIME = "12:00";
 
 /** Renders a WhatsApp message bubble that mirrors how the template will appear. */
 export function TemplatePreview({ builder }: { builder: TemplateBuilder }) {
-  const headerExamples = builder.header.textExample ? [builder.header.textExample] : [];
+  const headerToken = builder.header.type === "TEXT" ? extractVariables(builder.header.text ?? "")[0] : undefined;
+  const headerExamples: Record<string, string> =
+    headerToken && builder.header.textExample ? { [headerToken]: builder.header.textExample } : {};
 
   return (
     <div className="wa-wallpaper flex h-full flex-col rounded-lg border p-4">

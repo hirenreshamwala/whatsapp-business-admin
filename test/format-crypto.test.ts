@@ -3,30 +3,40 @@ import { renderTemplateText, selectionHasWhatsAppFormat, substituteVariables, to
 
 describe("substituteVariables", () => {
   it("substitutes provided sample values", () => {
-    expect(substituteVariables("Hi {{1}} and {{2}}", ["A", "B"])).toBe("Hi A and B");
+    expect(substituteVariables("Hi {{1}} and {{2}}", { "1": "A", "2": "B" })).toBe("Hi A and B");
+  });
+  it("substitutes named variables", () => {
+    expect(substituteVariables("{{code}} is your code", { code: "1234" })).toBe("1234 is your code");
   });
   it("marks missing values with a placeholder", () => {
-    expect(substituteVariables("Hi {{1}}", [])).toContain("VAR1");
+    expect(substituteVariables("Hi {{1}}", {})).toContain("VAR:1");
+  });
+  it("marks missing named values with a placeholder", () => {
+    expect(substituteVariables("Hi {{code}}", {})).toContain("VAR:code");
   });
   it("does not emit raw NUL bytes for missing values", () => {
-    expect(substituteVariables("Hi {{1}}", [])).not.toContain(String.fromCharCode(0));
+    expect(substituteVariables("Hi {{1}}", {})).not.toContain(String.fromCharCode(0));
   });
 });
 
 describe("renderTemplateText", () => {
   it("renders bold/italic/strike with trailing punctuation", () => {
-    const html = renderTemplateText("Hi *{{1}}*, total _{{2}}_. ~old~", ["Priya", "₹99"]);
+    const html = renderTemplateText("Hi *{{1}}*, total _{{2}}_. ~old~", { "1": "Priya", "2": "₹99" });
     expect(html).toContain("<strong>Priya</strong>");
     expect(html).toContain("<em>₹99</em>");
     expect(html).toContain("<del>old</del>");
   });
   it("escapes HTML", () => {
-    expect(renderTemplateText("<script>", [])).toContain("&lt;script&gt;");
+    expect(renderTemplateText("<script>", {})).toContain("&lt;script&gt;");
   });
   it("renders a missing variable as a highlighted placeholder", () => {
-    const html = renderTemplateText("Hi {{1}}", []);
+    const html = renderTemplateText("Hi {{1}}", {});
     expect(html).toContain('class="rounded bg-amber-200/70 px-1 text-amber-900"');
     expect(html).toContain(">{{1}}</span>");
+  });
+  it("renders a missing named variable as a highlighted placeholder", () => {
+    const html = renderTemplateText("Hi {{code}}", {});
+    expect(html).toContain(">{{code}}</span>");
   });
 });
 

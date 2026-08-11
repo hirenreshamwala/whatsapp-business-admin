@@ -21,9 +21,13 @@ export type TemplateButtonInput = {
 };
 
 export type TemplateSendInput = {
-  /** Body {{1}}, {{2}}… values, in order. `variables` is an accepted alias. */
-  body_variables?: (string | number)[];
-  variables?: (string | number)[];
+  /**
+   * Body variable values. For positional templates ({{1}}, {{2}}…), pass an
+   * ordered array. For named templates ({{code}}, {{first_name}}…), pass an
+   * object keyed by variable name. `variables` is an accepted alias.
+   */
+  body_variables?: (string | number)[] | Record<string, string | number>;
+  variables?: (string | number)[] | Record<string, string | number>;
   /** Value for a single {{1}} in a TEXT header. */
   header_text?: string;
   /** Media for an IMAGE/VIDEO/DOCUMENT header. */
@@ -52,12 +56,17 @@ export function buildTemplateComponents(input: TemplateSendInput): unknown[] {
     components.push({ type: "header", parameters: [{ type: m.type, [m.type]: mediaObj }] });
   }
 
-  // Body variables
+  // Body variables — positional array or named object
   const bodyVars = input.body_variables ?? input.variables;
-  if (bodyVars && bodyVars.length) {
+  if (Array.isArray(bodyVars) && bodyVars.length) {
     components.push({
       type: "body",
       parameters: bodyVars.map((v) => ({ type: "text", text: String(v) })),
+    });
+  } else if (bodyVars && typeof bodyVars === "object" && Object.keys(bodyVars).length) {
+    components.push({
+      type: "body",
+      parameters: Object.entries(bodyVars).map(([name, v]) => ({ type: "text", parameter_name: name, text: String(v) })),
     });
   }
 

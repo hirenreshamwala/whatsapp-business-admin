@@ -18,6 +18,18 @@ describe("buildTemplateComponents", () => {
     ]);
   });
 
+  it("builds named body parameters from a body_variables object", () => {
+    expect(buildTemplateComponents({ body_variables: { code: "1234", first_name: "Priya" } })).toEqual([
+      {
+        type: "body",
+        parameters: [
+          { type: "text", parameter_name: "code", text: "1234" },
+          { type: "text", parameter_name: "first_name", text: "Priya" },
+        ],
+      },
+    ]);
+  });
+
   it("builds a text header parameter", () => {
     expect(buildTemplateComponents({ header_text: "SALE" })[0]).toEqual({
       type: "header",

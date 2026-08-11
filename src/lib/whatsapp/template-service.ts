@@ -3,6 +3,8 @@ import { getWabaConfig } from "@/lib/settings";
 import { graphFetch, WhatsAppApiError } from "@/lib/whatsapp/client";
 import {
   builderToComponents,
+  componentsForTemplateSubmission,
+  templateParameterFormat,
   type ApiComponent,
   type TemplateBuilder,
 } from "@/lib/whatsapp/template-types";
@@ -34,12 +36,16 @@ export async function submitTemplate(templateId: string): Promise<{ status: Temp
 
   // Reconstruct a builder-shaped object from stored components for validation.
   const components = tmpl.components as unknown as ApiComponent[];
+  const category = tmpl.category as TemplateBuilder["category"];
+  const submissionComponents = componentsForTemplateSubmission(category, components);
+  const parameterFormat = category === "AUTHENTICATION" ? undefined : templateParameterFormat(components);
 
   const payload = {
     name: tmpl.name,
     language: tmpl.language,
     category: tmpl.category,
-    components,
+    components: submissionComponents,
+    ...(parameterFormat ? { parameter_format: parameterFormat } : {}),
   };
 
   const res = await graphFetch<{ id: string; status: string; category: string }>({
@@ -125,11 +131,27 @@ export async function syncTemplates(): Promise<{ synced: number }> {
 export function templateExampleComponents(components: ApiComponent[]): unknown[] {
   const out: unknown[] = [];
   for (const c of components) {
-    if (c.type === "HEADER" && c.format === "TEXT" && c.example?.header_text?.length) {
-      out.push({ type: "header", parameters: c.example.header_text.map((v) => ({ type: "text", text: v })) });
+    if (c.type === "HEADER" && c.format === "TEXT" && c.example) {
+      const example = c.example;
+      if ("header_text_named_params" in example && example.header_text_named_params.length) {
+        out.push({
+          type: "header",
+          parameters: example.header_text_named_params.map((p) => ({ type: "text", parameter_name: p.param_name, text: p.example })),
+        });
+      } else if ("header_text" in example && example.header_text.length) {
+        out.push({ type: "header", parameters: example.header_text.map((v) => ({ type: "text", text: v })) });
+      }
     }
-    if (c.type === "BODY" && c.example?.body_text?.[0]?.length) {
-      out.push({ type: "body", parameters: c.example.body_text[0].map((v) => ({ type: "text", text: v })) });
+    if (c.type === "BODY" && c.example) {
+      const example = c.example;
+      if ("body_text_named_params" in example && example.body_text_named_params.length) {
+        out.push({
+          type: "body",
+          parameters: example.body_text_named_params.map((p) => ({ type: "text", parameter_name: p.param_name, text: p.example })),
+        });
+      } else if ("body_text" in example && example.body_text[0]?.length) {
+        out.push({ type: "body", parameters: example.body_text[0].map((v) => ({ type: "text", text: v })) });
+      }
     }
   }
   return out;

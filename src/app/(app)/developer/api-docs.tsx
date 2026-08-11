@@ -175,7 +175,7 @@ export function ApiDocs({ baseUrl }: { baseUrl: string }) {
       path: "/api/v1/messages",
       title: "Template — body variables",
       description:
-        "Send an approved template (works any time). `body_variables` fills the body placeholders {{1}}, {{2}}… in order. (`variables` is an accepted alias.) Omit them to use the template's saved sample values.",
+        "Send an approved template (works any time). `body_variables` fills the body placeholders {{1}}, {{2}}… in order. (`variables` is an accepted alias.) For templates with named variables like {{code}}, pass an object instead, e.g. `{\"code\": \"1234\"}`. Omit them to use the template's saved sample values.",
       request: `curl -s -X POST ${baseUrl}/api/v1/messages \\
   -H "X-API-Key: ${KEY}" \\
   -H "Content-Type: application/json" \\

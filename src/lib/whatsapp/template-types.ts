@@ -29,7 +29,8 @@ export type TemplateBuilder = {
   };
   body: {
     text: string;
-    examples: string[];
+    /** Sample values keyed by variable token ("1", "2", or a name like "code"). */
+    examples: Record<string, string>;
   };
   footer: { text?: string };
   buttons: BuilderButton[];
@@ -41,7 +42,7 @@ export function emptyBuilder(): TemplateBuilder {
     language: "en_US",
     category: "MARKETING",
     header: { type: "NONE" },
-    body: { text: "", examples: [] },
+    body: { text: "", examples: {} },
     footer: {},
     buttons: [],
   };
@@ -56,16 +57,41 @@ export function variableNumbers(text: string): number[] {
   return [...nums].sort((a, b) => a - b);
 }
 
+/** Extract unique {{token}} variables (positional or named) in first-seen order. */
+export function extractVariables(text: string): string[] {
+  const seen = new Set<string>();
+  const re = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) seen.add(m[1]);
+  return [...seen];
+}
+
+/** A variable token is "named" unless it's purely numeric (positional). */
+export function isNamedToken(token: string): boolean {
+  return !/^\d+$/.test(token);
+}
+
 // ---- Graph API component shapes ----
 
+export type NamedParamExample = { param_name: string; example: string };
+
 export type ApiComponent =
-  | { type: "HEADER"; format: "TEXT"; text: string; example?: { header_text: string[] } }
+  | {
+      type: "HEADER";
+      format: "TEXT";
+      text: string;
+      example?: { header_text: string[] } | { header_text_named_params: NamedParamExample[] };
+    }
   | {
       type: "HEADER";
       format: "IMAGE" | "VIDEO" | "DOCUMENT";
       example: { header_handle: string[] };
     }
-  | { type: "BODY"; text: string; example?: { body_text: string[][] } }
+  | {
+      type: "BODY";
+      text: string;
+      example?: { body_text: string[][] } | { body_text_named_params: NamedParamExample[] };
+    }
   | { type: "FOOTER"; text: string }
   | { type: "BUTTONS"; buttons: ApiButton[] };
 
@@ -80,12 +106,17 @@ export type ApiButton =
 export function builderToComponents(b: TemplateBuilder): ApiComponent[] {
   const components: ApiComponent[] = [];
 
+  const headerTokens = b.header.type === "TEXT" ? extractVariables(b.header.text ?? "") : [];
+  const bodyTokens = extractVariables(b.body.text);
+  const named = [...headerTokens, ...bodyTokens].some(isNamedToken);
+
   // HEADER
   if (b.header.type === "TEXT" && b.header.text) {
-    const vars = variableNumbers(b.header.text);
     const header: ApiComponent = { type: "HEADER", format: "TEXT", text: b.header.text };
-    if (vars.length > 0 && b.header.textExample) {
-      header.example = { header_text: [b.header.textExample] };
+    if (headerTokens.length > 0 && b.header.textExample) {
+      header.example = named
+        ? { header_text_named_params: [{ param_name: headerTokens[0], example: b.header.textExample }] }
+        : { header_text: [b.header.textExample] };
     }
     components.push(header);
   } else if (b.header.type === "IMAGE" || b.header.type === "VIDEO" || b.header.type === "DOCUMENT") {
@@ -97,10 +128,11 @@ export function builderToComponents(b: TemplateBuilder): ApiComponent[] {
   }
 
   // BODY (required)
-  const bodyVars = variableNumbers(b.body.text);
   const body: ApiComponent = { type: "BODY", text: b.body.text };
-  if (bodyVars.length > 0) {
-    body.example = { body_text: [b.body.examples.slice(0, bodyVars.length)] };
+  if (bodyTokens.length > 0) {
+    body.example = named
+      ? { body_text_named_params: bodyTokens.map((token) => ({ param_name: token, example: b.body.examples[token] ?? "" })) }
+      : { body_text: [bodyTokens.map((token) => b.body.examples[token] ?? "")] };
   }
   components.push(body);
 
@@ -151,11 +183,12 @@ export function componentsToBuilder(
   for (const c of components) {
     if (c.type === "HEADER") {
       if (c.format === "TEXT") {
-        b.header = {
-          type: "TEXT",
-          text: c.text,
-          textExample: c.example?.header_text?.[0],
-        };
+        const example = c.example;
+        const textExample =
+          example && "header_text_named_params" in example
+            ? example.header_text_named_params[0]?.example
+            : example?.header_text?.[0];
+        b.header = { type: "TEXT", text: c.text, textExample };
       } else {
         b.header = {
           type: c.format,
@@ -163,7 +196,12 @@ export function componentsToBuilder(
         };
       }
     } else if (c.type === "BODY") {
-      b.body = { text: c.text, examples: c.example?.body_text?.[0] ?? [] };
+      const example = c.example;
+      const examples: Record<string, string> =
+        example && "body_text_named_params" in example
+          ? Object.fromEntries(example.body_text_named_params.map((p) => [p.param_name, p.example]))
+          : Object.fromEntries((example?.body_text?.[0] ?? []).map((v, i) => [String(i + 1), v]));
+      b.body = { text: c.text, examples };
     } else if (c.type === "FOOTER") {
       b.footer = { text: c.text };
     } else if (c.type === "BUTTONS") {
@@ -184,4 +222,53 @@ export function componentsToBuilder(
     }
   }
   return b;
+}
+
+/**
+ * Whether a set of Graph API components uses NAMED or POSITIONAL variables,
+ * derived from the example shape actually stored (rather than a separate flag).
+ * Returns undefined when the template has no variables at all.
+ */
+export function templateParameterFormat(components: ApiComponent[]): "NAMED" | "POSITIONAL" | undefined {
+  for (const c of components) {
+    if (c.type === "BODY" && c.example) {
+      return "body_text_named_params" in c.example ? "NAMED" : "POSITIONAL";
+    }
+    if (c.type === "HEADER" && c.format === "TEXT" && c.example) {
+      return "header_text_named_params" in c.example ? "NAMED" : "POSITIONAL";
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Convert stored editor components to the category-specific shape accepted by
+ * Meta's template-creation endpoint.
+ *
+ * Authentication copy-code templates use preset, non-editable text. Their
+ * BODY therefore takes flags rather than `text`/`example`, and their button is
+ * an OTP button rather than the COPY_CODE button used by regular templates.
+ */
+export function componentsForTemplateSubmission(
+  category: TemplateCategory,
+  components: ApiComponent[],
+): unknown[] {
+  if (category !== "AUTHENTICATION") return components;
+
+  const submission: unknown[] = [
+    { type: "BODY", add_security_recommendation: true },
+  ];
+
+  const copyCodeButton = components
+    .find((component) => component.type === "BUTTONS")
+    ?.buttons.find((button) => button.type === "COPY_CODE");
+
+  if (copyCodeButton) {
+    submission.push({
+      type: "BUTTONS",
+      buttons: [{ type: "OTP", otp_type: "COPY_CODE" }],
+    });
+  }
+
+  return submission;
 }

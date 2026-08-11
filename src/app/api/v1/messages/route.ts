@@ -39,8 +39,8 @@ const schema = z.object({
   // template
   template: z.string().optional(),
   language: z.string().optional(),
-  variables: z.array(z.union([z.string(), z.number()])).optional(),
-  body_variables: z.array(z.union([z.string(), z.number()])).optional(),
+  variables: z.union([z.array(z.union([z.string(), z.number()])), z.record(z.union([z.string(), z.number()]))]).optional(),
+  body_variables: z.union([z.array(z.union([z.string(), z.number()])), z.record(z.union([z.string(), z.number()]))]).optional(),
   header_text: z.string().optional(),
   header_media: headerMediaSchema.optional(),
   buttons: z.array(buttonSchema).optional(),
@@ -60,6 +60,7 @@ const MEDIA_TYPES = ["image", "video", "audio", "document"] as const;
  *             "header_text":"SALE", "body_variables":["Priya","#A123"],
  *             "header_media":{ "type":"image", "link":"https://…/banner.jpg" },
  *             "buttons":[{ "type":"url", "index":0, "value":"order/123" }] }
+ * Template with named variables: "body_variables":{"first_name":"Priya","order_number":"#A123"}
  */
 export const POST = v1Handle(async (req) => {
   const raw = await req.json().catch(() => ({}));

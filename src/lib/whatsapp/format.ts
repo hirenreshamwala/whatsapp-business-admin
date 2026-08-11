@@ -36,7 +36,7 @@ const FORMAT_MARKERS: Record<WhatsAppTextFormat, string> = {
 function expandAcrossVariables(text: string, start: number, end: number) {
   let expandedStart = start;
   let expandedEnd = end;
-  for (const match of text.matchAll(/\{\{\s*\d+\s*\}\}/g)) {
+  for (const match of text.matchAll(/\{\{\s*[a-zA-Z0-9_]+\s*\}\}/g)) {
     const tokenStart = match.index;
     const tokenEnd = tokenStart + match[0].length;
     if (expandedStart < tokenEnd && expandedEnd > tokenStart) {
@@ -155,12 +155,12 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
-/** Replace {{1}}, {{2}} … with example values (1-indexed). Missing → highlighted chip. */
-export function substituteVariables(text: string, examples: string[]): string {
-  return text.replace(/\{\{\s*(\d+)\s*\}\}/g, (_m, n) => {
-    const value = examples[Number(n) - 1];
+/** Replace {{token}} (positional or named) with example values. Missing → highlighted chip. */
+export function substituteVariables(text: string, examples: Record<string, string>): string {
+  return text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, token) => {
+    const value = examples[token];
     if (value && value.trim()) return value;
-    return `${VARIABLE_MARKER_START}VAR${n}${VARIABLE_MARKER_END}`;
+    return `${VARIABLE_MARKER_START}VAR:${token}${VARIABLE_MARKER_END}`;
   });
 }
 
@@ -172,7 +172,7 @@ const RE_ITALIC = new RegExp("(?<![\\w])_(?!\\s)([^_\\n]*?[^_\\s])_(?![\\w])", "
 const RE_STRIKE = new RegExp("~(?!\\s)([^~\\n]*?[^~\\s])~", "g");
 const RE_BOLD1 = new RegExp("\\*([^\\s*])\\*", "g");
 const RE_VARIABLE_MARKER = new RegExp(
-  `${VARIABLE_MARKER_START}VAR(\\d+)${VARIABLE_MARKER_END}`,
+  `${VARIABLE_MARKER_START}VAR:([a-zA-Z0-9_]+)${VARIABLE_MARKER_END}`,
   "g",
 );
 
@@ -197,6 +197,6 @@ export function whatsappToHtml(text: string): string {
 }
 
 /** Full pipeline: substitute samples then format. */
-export function renderTemplateText(text: string, examples: string[] = []): string {
+export function renderTemplateText(text: string, examples: Record<string, string> = {}): string {
   return whatsappToHtml(substituteVariables(text, examples));
 }

@@ -3,7 +3,7 @@ import { emptyBuilder, type TemplateBuilder } from "@/lib/whatsapp/template-type
 import { validateTemplate } from "@/lib/whatsapp/template-validate";
 
 function base(): TemplateBuilder {
-  return { ...emptyBuilder(), name: "order_update", body: { text: "Hello", examples: [] } };
+  return { ...emptyBuilder(), name: "order_update", body: { text: "Hello", examples: {} } };
 }
 
 describe("validateTemplate", () => {
@@ -31,15 +31,15 @@ describe("validateTemplate", () => {
 
   it("requires sample values for body variables", () => {
     const b = base();
-    b.body = { text: "Hi {{1}}", examples: [] };
+    b.body = { text: "Hi {{1}}", examples: {} };
     expect(validateTemplate(b).some((e) => e.field === "body")).toBe(true);
-    b.body.examples = ["Priya"];
+    b.body.examples = { "1": "Priya" };
     expect(validateTemplate(b).some((e) => e.field === "body")).toBe(false);
   });
 
   it("requires body variables to be sequential from 1", () => {
     const b = base();
-    b.body = { text: "Hi {{2}}", examples: ["x", "y"] };
+    b.body = { text: "Hi {{2}}", examples: { "1": "x", "2": "y" } };
     expect(validateTemplate(b).some((e) => e.field === "body")).toBe(true);
   });
 
@@ -70,5 +70,23 @@ describe("validateTemplate", () => {
     const b = base();
     b.buttons = [{ type: "URL", text: "Track", url: "https://x.com/{{1}}" }];
     expect(validateTemplate(b).some((e) => e.field.startsWith("button"))).toBe(true);
+  });
+
+  it("accepts named variables with sample values", () => {
+    const b = base();
+    b.body = { text: "{{code}} is your code", examples: { code: "1234" } };
+    expect(validateTemplate(b).some((e) => e.field === "body")).toBe(false);
+  });
+
+  it("rejects mixing positional and named variables", () => {
+    const b = base();
+    b.body = { text: "Hi {{1}}, your code is {{code}}", examples: { "1": "Priya", code: "1234" } };
+    expect(validateTemplate(b).some((e) => e.field === "body")).toBe(true);
+  });
+
+  it("rejects invalid characters in named variables", () => {
+    const b = base();
+    b.body = { text: "{{MyCode}} is your code", examples: { MyCode: "1234" } };
+    expect(validateTemplate(b).some((e) => e.field === "body")).toBe(true);
   });
 });
