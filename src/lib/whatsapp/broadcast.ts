@@ -32,7 +32,10 @@ export async function runBroadcast(broadcastId: string): Promise<void> {
   }
 
   const config = await getWabaConfig();
-  const components = templateExampleComponents(broadcast.template.components as unknown as ApiComponent[]);
+  const components = templateExampleComponents(
+    broadcast.template.components as unknown as ApiComponent[],
+    broadcast.template.category,
+  );
 
   await prisma.broadcast.update({ where: { id: broadcastId }, data: { status: "RUNNING" } });
 

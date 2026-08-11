@@ -196,8 +196,11 @@ function ThreadPane({ conversationId }: { conversationId: string }) {
   });
 
   const sendTemplate = useMutation({
-    mutationFn: (templateId: string) =>
-      apiFetch(`/api/conversations/${conversationId}/messages`, { method: "POST", body: JSON.stringify({ kind: "template", templateId }) }),
+    mutationFn: (input: { templateId: string; bodyVariables?: string[] | Record<string, string> }) =>
+      apiFetch(`/api/conversations/${conversationId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ kind: "template", ...input }),
+      }),
     onSuccess: () => {
       setShowTemplates(false);
       invalidate();
@@ -297,7 +300,7 @@ function ThreadPane({ conversationId }: { conversationId: string }) {
       <TemplatePicker
         open={showTemplates}
         onClose={() => setShowTemplates(false)}
-        onPick={(id) => sendTemplate.mutate(id)}
+        onPick={(input) => sendTemplate.mutate(input)}
         pending={sendTemplate.isPending}
       />
       <FlowPicker open={showFlows} onClose={() => setShowFlows(false)} onPick={(id) => sendFlow.mutate(id)} pending={sendFlow.isPending} />
@@ -359,7 +362,27 @@ function StatusTick({ status }: { status: string }) {
   }
 }
 
-type ApprovedTemplate = { id: string; name: string; language: string; status: string };
+type ApprovedTemplate = {
+  id: string;
+  name: string;
+  language: string;
+  status: string;
+  category: string;
+  components: { type: string; text?: string }[];
+};
+
+function templateBodyTokens(template: ApprovedTemplate): string[] {
+  const text = template.components.find((component) => component.type.toUpperCase() === "BODY")?.text ?? "";
+  const tokens: string[] = [];
+  const seen = new Set<string>();
+  for (const match of text.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)) {
+    if (!seen.has(match[1])) {
+      seen.add(match[1]);
+      tokens.push(match[1]);
+    }
+  }
+  return tokens;
+}
 
 function TemplatePicker({
   open,
@@ -369,39 +392,96 @@ function TemplatePicker({
 }: {
   open: boolean;
   onClose: () => void;
-  onPick: (id: string) => void;
+  onPick: (input: { templateId: string; bodyVariables?: string[] | Record<string, string> }) => void;
   pending: boolean;
 }) {
+  const [selected, setSelected] = useState<ApprovedTemplate | null>(null);
+  const [values, setValues] = useState<Record<string, string>>({});
   const { data: templates = [] } = useQuery({
     queryKey: ["templates", "approved"],
     queryFn: () => apiFetch<ApprovedTemplate[]>("/api/templates?approved=true"),
     enabled: open,
   });
+  const tokens = selected ? templateBodyTokens(selected) : [];
+  const allValuesPresent = tokens.every((token) => values[token]?.trim());
+
+  useEffect(() => {
+    if (!open) {
+      setSelected(null);
+      setValues({});
+    }
+  }, [open]);
+
+  function choose(template: ApprovedTemplate) {
+    const required = templateBodyTokens(template);
+    if (required.length === 0) {
+      onPick({ templateId: template.id });
+      return;
+    }
+    setSelected(template);
+    setValues({});
+  }
+
+  function sendSelected() {
+    if (!selected || !allValuesPresent) return;
+    const named = tokens.some((token) => !/^\d+$/.test(token));
+    const bodyVariables = named
+      ? Object.fromEntries(tokens.map((token) => [token, values[token].trim()]))
+      : tokens.map((token) => values[token].trim());
+    onPick({ templateId: selected.id, bodyVariables });
+  }
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Choose an approved template</DialogTitle>
+          <DialogTitle>{selected ? `Send ${selected.name}` : "Choose an approved template"}</DialogTitle>
         </DialogHeader>
-        <div className="max-h-80 space-y-1 overflow-auto scroll-thin">
-          {templates.length === 0 && (
-            <p className="py-6 text-center text-xs text-muted-foreground">
-              No approved templates. Create and get one approved first.
+        {selected ? (
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Enter the values that will replace this template&apos;s parameters.
             </p>
-          )}
-          {templates.map((t) => (
-            <button
-              key={t.id}
-              disabled={pending}
-              onClick={() => onPick(t.id)}
-              className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:border-primary/40 disabled:opacity-50"
-            >
-              <span className="font-medium">{t.name}</span>
-              <Badge variant="outline">{t.language}</Badge>
-            </button>
-          ))}
-        </div>
+            <div className="space-y-3">
+              {tokens.map((token) => (
+                <label key={token} className="block space-y-1 text-xs font-medium">
+                  <span>{selected.category === "AUTHENTICATION" ? "Verification code" : `{{${token}}}`}</span>
+                  <Input
+                    value={values[token] ?? ""}
+                    onChange={(event) => setValues((current) => ({ ...current, [token]: event.target.value }))}
+                    placeholder={selected.category === "AUTHENTICATION" ? "e.g. 123456" : `Value for {{${token}}}`}
+                    autoFocus={token === tokens[0]}
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-between gap-2">
+              <Button variant="outline" onClick={() => setSelected(null)} disabled={pending}>Back</Button>
+              <Button onClick={sendSelected} disabled={!allValuesPresent || pending}>
+                <Send className="h-4 w-4" /> {pending ? "Sending…" : "Send template"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="max-h-80 space-y-1 overflow-auto scroll-thin">
+            {templates.length === 0 && (
+              <p className="py-6 text-center text-xs text-muted-foreground">
+                No approved templates. Create and get one approved first.
+              </p>
+            )}
+            {templates.map((t) => (
+              <button
+                key={t.id}
+                disabled={pending}
+                onClick={() => choose(t)}
+                className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:border-primary/40 disabled:opacity-50"
+              >
+                <span className="font-medium">{t.name}</span>
+                <Badge variant="outline">{t.language}</Badge>
+              </button>
+            ))}
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

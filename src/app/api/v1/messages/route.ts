@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureConversation, sendMessage, isWithinSessionWindow } from "@/lib/whatsapp/send";
 import { storeFromLink } from "@/lib/whatsapp/media";
 import { buildTemplateComponents } from "@/lib/whatsapp/template-params";
-import { templateExampleComponents } from "@/lib/whatsapp/template-service";
+import { templateExampleComponents, templateRuntimeComponents } from "@/lib/whatsapp/template-service";
 import type { ApiComponent } from "@/lib/whatsapp/template-types";
 import { finishPreparedFlowLaunch, prepareTemplateFlowLaunch } from "@/lib/whatsapp/flow-launch";
 
@@ -142,10 +142,24 @@ export const POST = v1Handle(async (req) => {
     buttons: body.buttons,
     components: body.components,
   });
+  const suppliedBodyVariables = body.body_variables ?? body.variables;
+  if (template.category === "AUTHENTICATION" && suppliedBodyVariables && !body.components?.length) {
+    const stringVariables = Array.isArray(suppliedBodyVariables)
+      ? suppliedBodyVariables.map(String)
+      : Object.fromEntries(Object.entries(suppliedBodyVariables).map(([name, value]) => [name, String(value)]));
+    components = templateRuntimeComponents(
+      template.components as unknown as ApiComponent[],
+      template.category,
+      stringVariables,
+    );
+  }
   // If the caller supplied no parameters, fall back to the template's saved
   // sample values so a bare { template, to } call still works.
   if (components.length === 0) {
-    components = templateExampleComponents(template.components as unknown as ApiComponent[]);
+    components = templateExampleComponents(
+      template.components as unknown as ApiComponent[],
+      template.category,
+    );
   }
   const prepared = await prepareTemplateFlowLaunch({
     templateComponents: template.components as unknown as ApiComponent[],

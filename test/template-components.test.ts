@@ -8,7 +8,7 @@ import {
   type TemplateBuilder,
   type ApiComponent,
 } from "@/lib/whatsapp/template-types";
-import { templateExampleComponents } from "@/lib/whatsapp/template-service";
+import { templateExampleComponents, templateRuntimeComponents } from "@/lib/whatsapp/template-service";
 
 describe("variableNumbers", () => {
   it("extracts sorted unique variable numbers", () => {
@@ -136,6 +136,28 @@ describe("builderToComponents", () => {
 });
 
 describe("templateExampleComponents", () => {
+  it("repeats an authentication OTP for the preset body and copy-code URL button", () => {
+    const b: TemplateBuilder = {
+      name: "otp_verification",
+      language: "en_US",
+      category: "AUTHENTICATION",
+      header: { type: "NONE" },
+      body: { text: "{{code}} is your verification code", examples: { code: "123456" } },
+      footer: {},
+      buttons: [{ type: "COPY_CODE", example: "123456" }],
+    };
+
+    expect(templateExampleComponents(builderToComponents(b), b.category)).toEqual([
+      { type: "body", parameters: [{ type: "text", text: "123456" }] },
+      {
+        type: "button",
+        sub_type: "url",
+        index: "0",
+        parameters: [{ type: "text", text: "123456" }],
+      },
+    ]);
+  });
+
   it("emits parameter_name for named body variables", () => {
     const b: TemplateBuilder = {
       name: "t",
@@ -167,5 +189,29 @@ describe("templateExampleComponents", () => {
     };
     const out = templateExampleComponents(builderToComponents(b));
     expect(out).toEqual([{ type: "body", parameters: [{ type: "text", text: "Priya" }] }]);
+  });
+});
+
+describe("templateRuntimeComponents", () => {
+  it("uses the entered OTP for both authentication parameters", () => {
+    const b: TemplateBuilder = {
+      name: "otp_verification",
+      language: "en_US",
+      category: "AUTHENTICATION",
+      header: { type: "NONE" },
+      body: { text: "{{code}} is your verification code", examples: { code: "review-only" } },
+      footer: {},
+      buttons: [{ type: "COPY_CODE", example: "review-only" }],
+    };
+
+    expect(templateRuntimeComponents(builderToComponents(b), b.category, { code: "654321" })).toEqual([
+      { type: "body", parameters: [{ type: "text", text: "654321" }] },
+      {
+        type: "button",
+        sub_type: "url",
+        index: "0",
+        parameters: [{ type: "text", text: "654321" }],
+      },
+    ]);
   });
 });

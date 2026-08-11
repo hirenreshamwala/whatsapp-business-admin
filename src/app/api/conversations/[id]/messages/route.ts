@@ -5,8 +5,8 @@ import { serializeMessage } from "@/lib/whatsapp/webhook";
 import { sendMessage, isWithinSessionWindow, type OutboundContent } from "@/lib/whatsapp/send";
 import { uploadOutboundMedia } from "@/lib/whatsapp/media";
 import { mediaStore, extFromMime } from "@/lib/media";
-import { templateExampleComponents } from "@/lib/whatsapp/template-service";
-import type { ApiComponent } from "@/lib/whatsapp/template-types";
+import { templateExampleComponents, templateRuntimeComponents } from "@/lib/whatsapp/template-service";
+import { extractVariables, isNamedToken, type ApiComponent } from "@/lib/whatsapp/template-types";
 import { presentFlowSubmission } from "@/lib/whatsapp/flow-present";
 import { finishPreparedFlowLaunch, launchFlow, prepareTemplateFlowLaunch } from "@/lib/whatsapp/flow-launch";
 
@@ -49,6 +49,10 @@ const textSchema = z.object({ kind: z.literal("text"), text: z.string().min(1) }
 const templateSchema = z.object({
   kind: z.literal("template"),
   templateId: z.string(),
+  bodyVariables: z.union([
+    z.array(z.string().trim().min(1)),
+    z.record(z.string().trim().min(1)),
+  ]).optional(),
 });
 const flowSchema = z.object({
   kind: z.literal("flow"),
@@ -131,13 +135,42 @@ export const POST = handle(async (req, { params }) => {
     if (!template) throw new HttpError(404, "Template not found");
     if (template.status !== "APPROVED") throw new HttpError(400, "Only approved templates can be sent.");
 
-    const prepared = await prepareTemplateFlowLaunch({ templateComponents: template.components as unknown as ApiComponent[], contactId: conversation.contact.id, conversationId: id });
+    const templateComponents = template.components as unknown as ApiComponent[];
+    const bodyComponent = templateComponents.find((component) => component.type === "BODY");
+    const bodyTokens = extractVariables(bodyComponent?.text ?? "");
+    if (bodyTokens.length > 0 && !parsed.bodyVariables) {
+      throw new HttpError(400, "Enter all template parameter values before sending.");
+    }
+    const bodyVariables = parsed.bodyVariables;
+    if (bodyVariables) {
+      const named = bodyTokens.some(isNamedToken);
+      if (named && Array.isArray(bodyVariables)) {
+        throw new HttpError(400, "Named template parameters must be supplied by name.");
+      }
+      if (!named && !Array.isArray(bodyVariables)) {
+        throw new HttpError(400, "Numbered template parameters must be supplied in order.");
+      }
+      if (Array.isArray(bodyVariables) && bodyVariables.length < bodyTokens.length) {
+        throw new HttpError(400, "Enter all template parameter values before sending.");
+      }
+      if (!Array.isArray(bodyVariables) && bodyTokens.some((token) => !bodyVariables[token])) {
+        throw new HttpError(400, "Enter all template parameter values before sending.");
+      }
+    }
+
+    const prepared = await prepareTemplateFlowLaunch({ templateComponents, contactId: conversation.contact.id, conversationId: id });
+    const sendComponents = bodyVariables
+      ? templateRuntimeComponents(templateComponents, template.category, bodyVariables)
+      : templateExampleComponents(templateComponents, template.category);
     const content: OutboundContent = {
       kind: "template",
       templateId: template.id,
       templateName: template.name,
       language: template.language,
-      components: [...templateExampleComponents(template.components as unknown as ApiComponent[]), ...(prepared ? [prepared.sendComponent] : [])],
+      components: [
+        ...sendComponents,
+        ...(prepared ? [prepared.sendComponent] : []),
+      ],
       preview: `Template: ${template.name}`,
     };
     try {

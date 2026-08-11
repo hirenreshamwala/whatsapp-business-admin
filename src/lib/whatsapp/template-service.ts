@@ -7,6 +7,7 @@ import {
   templateParameterFormat,
   type ApiComponent,
   type TemplateBuilder,
+  type TemplateCategory,
 } from "@/lib/whatsapp/template-types";
 import { validateTemplate } from "@/lib/whatsapp/template-validate";
 import type { TemplateStatus } from "@prisma/client";
@@ -128,7 +129,30 @@ export async function syncTemplates(): Promise<{ synced: number }> {
  * variable slots from the template's stored example values. Shared by the inbox
  * template send and broadcasts.
  */
-export function templateExampleComponents(components: ApiComponent[]): unknown[] {
+export function templateExampleComponents(
+  components: ApiComponent[],
+  category?: TemplateCategory,
+): unknown[] {
+  if (category === "AUTHENTICATION") {
+    const body = components.find((component) => component.type === "BODY");
+    const buttons = components.find((component) => component.type === "BUTTONS");
+    const copyCode = buttons?.buttons.find((button) => button.type === "COPY_CODE");
+    const bodyExample = body?.example;
+    const code =
+      (bodyExample && "body_text_named_params" in bodyExample
+        ? bodyExample.body_text_named_params[0]?.example
+        : bodyExample?.body_text?.[0]?.[0]) ?? copyCode?.example;
+
+    if (!code) return [];
+
+    // Authentication templates use Meta's fixed {{1}} body and require the
+    // same OTP again for the generated copy-code URL button.
+    return [
+      { type: "body", parameters: [{ type: "text", text: code }] },
+      { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: code }] },
+    ];
+  }
+
   const out: unknown[] = [];
   for (const c of components) {
     if (c.type === "HEADER" && c.format === "TEXT" && c.example) {
@@ -155,6 +179,42 @@ export function templateExampleComponents(components: ApiComponent[]): unknown[]
     }
   }
   return out;
+}
+
+export type TemplateBodyVariables = string[] | Record<string, string>;
+
+/** Build send-time body parameters supplied by an inbox user. */
+export function templateRuntimeComponents(
+  components: ApiComponent[],
+  category: TemplateCategory,
+  bodyVariables: TemplateBodyVariables,
+): unknown[] {
+  const values = Array.isArray(bodyVariables) ? bodyVariables : Object.values(bodyVariables);
+
+  if (category === "AUTHENTICATION") {
+    const code = values[0];
+    if (!code) return [];
+    return [
+      { type: "body", parameters: [{ type: "text", text: code }] },
+      { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: code }] },
+    ];
+  }
+
+  const body = {
+    type: "body",
+    parameters: Array.isArray(bodyVariables)
+      ? bodyVariables.map((text) => ({ type: "text", text }))
+      : Object.entries(bodyVariables).map(([parameter_name, text]) => ({
+          type: "text",
+          parameter_name,
+          text,
+        })),
+  };
+  const fallback = templateExampleComponents(components, category);
+  const bodyIndex = fallback.findIndex((component) => (component as { type?: string }).type === "body");
+  if (bodyIndex >= 0) fallback[bodyIndex] = body;
+  else fallback.push(body);
+  return fallback;
 }
 
 /** Delete a template both on Meta (by name) and locally. */
