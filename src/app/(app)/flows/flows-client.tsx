@@ -48,7 +48,7 @@ export function FlowsClient() {
         <Button variant="outline" size="sm" onClick={() => sync.mutate()} disabled={sync.isPending}><RefreshCw className={sync.isPending ? "h-4 w-4 animate-spin" : "h-4 w-4"} /> Sync Meta</Button>
         <Button size="sm" asChild><Link href="/flows/new"><Plus className="h-4 w-4" /> New Flow</Link></Button>
       </>} />
-      <div className="p-4">
+      <div className="p-3 sm:p-4">
         <div className="rounded-lg border">
           <Table>
             <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Categories</TableHead><TableHead>Version</TableHead><TableHead>Status</TableHead><TableHead>Launches</TableHead><TableHead>Updated</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
@@ -59,13 +59,13 @@ export function FlowsClient() {
                 const status = flow.activeVersion?.status || "LOCAL";
                 const editable = ["LOCAL", "DRAFT", "ERROR"].includes(status);
                 return <TableRow key={flow.id}>
-                  <TableCell><div className="font-medium">{flow.name}</div><div className="text-[11px] text-muted-foreground">{flow.activeVersion?.metaFlowId || "Not pushed to Meta"}</div></TableCell>
-                  <TableCell><div className="flex flex-wrap gap-1">{flow.categories.map((category) => <Badge key={category} variant="outline">{category.replaceAll("_", " ")}</Badge>)}</div></TableCell>
-                  <TableCell>v{flow.activeVersion?.revision || 1}</TableCell>
-                  <TableCell><Badge variant={status === "PUBLISHED" ? "success" : status === "ERROR" || status === "BLOCKED" ? "destructive" : status === "DRAFT" ? "warning" : "secondary"}>{status}</Badge></TableCell>
-                  <TableCell>{flow._count.launches}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{formatDateTime(flow.updatedAt)}</TableCell>
-                  <TableCell><div className="flex justify-end gap-0.5">
+                  <TableCell data-label="Name"><div className="font-medium">{flow.name}</div><div className="text-[11px] text-muted-foreground">{flow.activeVersion?.metaFlowId || "Not pushed to Meta"}</div></TableCell>
+                  <TableCell data-label="Categories"><div className="flex flex-wrap gap-1">{flow.categories.map((category) => <Badge key={category} variant="outline">{category.replaceAll("_", " ")}</Badge>)}</div></TableCell>
+                  <TableCell data-label="Version">v{flow.activeVersion?.revision || 1}</TableCell>
+                  <TableCell data-label="Status"><Badge variant={status === "PUBLISHED" ? "success" : status === "ERROR" || status === "BLOCKED" ? "destructive" : status === "DRAFT" ? "warning" : "secondary"}>{status}</Badge></TableCell>
+                  <TableCell data-label="Launches">{flow._count.launches}</TableCell>
+                  <TableCell data-label="Updated" className="text-xs text-muted-foreground">{formatDateTime(flow.updatedAt)}</TableCell>
+                  <TableCell data-label="Actions"><div className="flex justify-end gap-0.5">
                     {editable && <Button variant="ghost" size="icon" title="Edit" asChild><Link href={`/flows/${flow.id}`}><Pencil className="h-4 w-4" /></Link></Button>}
                     {editable && <Button variant="ghost" size="icon" title="Upload and validate" onClick={() => action.mutate({ id: flow.id, name: "upload" })}><Upload className="h-4 w-4" /></Button>}
                     {editable && <Button variant="ghost" size="icon" title="Publish" onClick={() => confirm("Publishing is irreversible. Publish this Flow?") && action.mutate({ id: flow.id, name: "publish" })}><Send className="h-4 w-4 text-primary" /></Button>}

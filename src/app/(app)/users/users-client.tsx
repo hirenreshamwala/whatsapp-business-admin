@@ -78,7 +78,7 @@ export function UsersClient({ currentUserId }: { currentUserId: string }) {
         }
       />
 
-      <div className="p-4">
+      <div className="p-3 sm:p-4">
         <div className="rounded-lg border">
           <Table>
             <TableHeader>
@@ -103,11 +103,11 @@ export function UsersClient({ currentUserId }: { currentUserId: string }) {
                 const self = u.id === currentUserId;
                 return (
                   <TableRow key={u.id}>
-                    <TableCell className="font-medium">
+                    <TableCell data-label="Name" className="font-medium">
                       {u.name} {self && <span className="text-xs text-muted-foreground">(you)</span>}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{u.email}</TableCell>
-                    <TableCell>
+                    <TableCell data-label="Email" className="break-all text-muted-foreground">{u.email}</TableCell>
+                    <TableCell data-label="Role">
                       <Select
                         value={u.role}
                         onValueChange={(role) => patch.mutate({ id: u.id, body: { role: role as User["role"] } })}
@@ -122,7 +122,7 @@ export function UsersClient({ currentUserId }: { currentUserId: string }) {
                         </SelectContent>
                       </Select>
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-label="Status">
                       <button
                         type="button"
                         disabled={self}
@@ -134,10 +134,10 @@ export function UsersClient({ currentUserId }: { currentUserId: string }) {
                         </Badge>
                       </button>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell data-label="Created" className="text-xs text-muted-foreground">
                       {formatDateTime(u.createdAt)}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell data-label="Actions" className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" title="Reset password" onClick={() => setResetFor(u)}>
                           <KeyRound className="h-4 w-4" />

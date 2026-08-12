@@ -1,9 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { MessageCircle, LogOut, ChevronDown } from "lucide-react";
+import { MessageCircle, LogOut, ChevronDown, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/components/shell/nav";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,7 @@ type Props = {
 
 export function AppShell({ user, wabaConnected, phoneNumber, children }: Props) {
   const pathname = usePathname();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const items = NAV_ITEMS.filter((i) => !i.adminOnly || user.role === "ADMIN");
   const initials = user.name
     .split(" ")
@@ -34,10 +36,35 @@ export function AppShell({ user, wabaConnected, phoneNumber, children }: Props) 
     .join("")
     .toUpperCase();
 
+  useEffect(() => setMobileNavOpen(false), [pathname]);
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => event.key === "Escape" && setMobileNavOpen(false);
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [mobileNavOpen]);
+
+  const navigation = (
+    <>
+      <nav className="flex-1 space-y-1 overflow-y-auto p-2 scroll-thin">
+        {items.map((item) => {
+          const active = item.href === "/" ? pathname === "/" : pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const Icon = item.icon;
+          return <Link key={item.href} href={item.href} className={cn("flex min-h-11 items-center gap-2.5 rounded-md px-3 text-sm font-medium transition-colors lg:min-h-0 lg:px-2.5 lg:py-1.5", active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground")}><Icon className="h-4 w-4 shrink-0" />{item.label}</Link>;
+        })}
+      </nav>
+      <div className="border-t p-3 text-xs text-muted-foreground lg:p-2"><div className="flex items-center gap-1.5 px-1.5"><span className={cn("h-1.5 w-1.5 rounded-full", wabaConnected ? "bg-emerald-500" : "bg-muted-foreground/40")} />{wabaConnected ? phoneNumber || "Connected" : "Not connected"}</div></div>
+    </>
+  );
+
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       {/* Sidebar */}
-      <aside className="flex w-52 shrink-0 flex-col border-r bg-card">
+      <aside className="hidden w-52 shrink-0 flex-col border-r bg-card lg:flex">
         <div className="flex h-12 items-center gap-2 border-b px-3">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <MessageCircle className="h-4 w-4" />
@@ -45,50 +72,19 @@ export function AppShell({ user, wabaConnected, phoneNumber, children }: Props) 
           <span className="text-sm font-semibold">WA Admin</span>
         </div>
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto p-2 scroll-thin">
-          {items.map((item) => {
-            const active =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname === item.href || pathname.startsWith(`${item.href}/`);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="border-t p-2 text-xs text-muted-foreground">
-          <div className="flex items-center gap-1.5 px-1.5">
-            <span
-              className={cn(
-                "h-1.5 w-1.5 rounded-full",
-                wabaConnected ? "bg-emerald-500" : "bg-muted-foreground/40",
-              )}
-            />
-            {wabaConnected ? phoneNumber || "Connected" : "Not connected"}
-          </div>
-        </div>
+        {navigation}
       </aside>
+
+      {mobileNavOpen && <div className="fixed inset-0 z-50 lg:hidden"><button aria-label="Close navigation" className="absolute inset-0 bg-black/50" onClick={() => setMobileNavOpen(false)} /><aside role="dialog" aria-modal="true" aria-label="Navigation" className="absolute inset-y-0 left-0 flex w-[min(84vw,320px)] flex-col bg-card shadow-xl"><div className="flex min-h-14 items-center gap-2 border-b px-4 pt-[env(safe-area-inset-top)]"><div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground"><MessageCircle className="h-4 w-4" /></div><span className="text-sm font-semibold">WA Admin</span><button className="ml-auto flex h-11 w-11 items-center justify-center rounded-md hover:bg-accent" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X className="h-5 w-5" /></button></div>{navigation}</aside></div>}
 
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center justify-between border-b bg-card px-4">
+        <header className="flex min-h-12 shrink-0 items-center justify-between border-b bg-card px-2 py-1 pt-[max(0.25rem,env(safe-area-inset-top))] sm:px-4">
           <div className="flex items-center gap-2">
+            <button className="flex h-10 w-10 items-center justify-center rounded-md hover:bg-accent lg:hidden" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Menu className="h-5 w-5" /></button>
+            <span className="text-sm font-semibold lg:hidden">WA Admin</span>
             {!wabaConnected && (
-              <Badge variant="warning" className="gap-1">
+              <Badge variant="warning" className="hidden gap-1 sm:inline-flex">
                 Connect your WhatsApp account in Settings
               </Badge>
             )}
@@ -115,7 +111,7 @@ export function AppShell({ user, wabaConnected, phoneNumber, children }: Props) 
           </DropdownMenu>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-auto scroll-thin">{children}</main>
+        <main className="min-h-0 min-w-0 flex-1 overflow-auto scroll-thin">{children}</main>
       </div>
     </div>
   );

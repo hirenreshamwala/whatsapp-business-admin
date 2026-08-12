@@ -17,6 +17,7 @@ import {
   Italic as ItalicIcon,
   ShieldCheck,
   Strikethrough,
+  Eye,
 } from "lucide-react";
 import { apiFetch } from "@/lib/fetcher";
 import { cn } from "@/lib/utils";
@@ -40,6 +41,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const STEPS = ["Basics", "Header", "Body", "Footer", "Buttons", "Review"];
 
@@ -54,6 +56,7 @@ export function TemplateWizard({ initial, templateId }: { initial?: TemplateBuil
   const { toast } = useToast();
   const [step, setStep] = useState(0);
   const [builder, setBuilder] = useState<TemplateBuilder>(initial ?? emptyBuilder());
+  const [showPreview, setShowPreview] = useState(false);
 
   const errors = useMemo(() => validateTemplate(builder), [builder]);
   const errorFor = (field: string) => errors.find((e) => e.field === field)?.message;
@@ -79,9 +82,7 @@ export function TemplateWizard({ initial, templateId }: { initial?: TemplateBuil
         title={templateId ? "Edit template" : "New template"}
         description="Build your message step by step. The preview on the right updates live."
         actions={
-          <Button variant="ghost" size="sm" onClick={() => router.push("/templates")}>
-            Cancel
-          </Button>
+          <><Button variant="outline" size="sm" className="lg:hidden" onClick={() => setShowPreview(true)}><Eye className="h-4 w-4" /> Preview</Button><Button variant="ghost" size="sm" onClick={() => router.push("/templates")}>Cancel</Button></>
         }
       />
 
@@ -89,7 +90,7 @@ export function TemplateWizard({ initial, templateId }: { initial?: TemplateBuil
         {/* Left: stepper + form */}
         <div className="flex min-h-0 flex-col border-r">
           <Stepper step={step} onStep={setStep} />
-          <div className="min-h-0 flex-1 overflow-auto scroll-thin p-4">
+          <div className="min-h-0 flex-1 overflow-auto p-3 scroll-thin sm:p-4">
             {step === 0 && <BasicsStep builder={builder} set={set} errorFor={errorFor} />}
             {step === 1 && <HeaderStep builder={builder} set={set} errorFor={errorFor} />}
             {step === 2 && <BodyStep builder={builder} set={set} errorFor={errorFor} />}
@@ -98,7 +99,7 @@ export function TemplateWizard({ initial, templateId }: { initial?: TemplateBuil
             {step === 5 && <ReviewStep errors={errors} />}
           </div>
 
-          <div className="flex items-center justify-between border-t p-3">
+          <div className="safe-bottom flex flex-wrap items-center justify-between gap-2 border-t p-3">
             <Button variant="outline" size="sm" disabled={step === 0} onClick={() => setStep((s) => s - 1)}>
               <ChevronLeft className="h-4 w-4" /> Back
             </Button>
@@ -127,19 +128,20 @@ export function TemplateWizard({ initial, templateId }: { initial?: TemplateBuil
           </div>
         </div>
       </div>
+      <Dialog open={showPreview} onOpenChange={setShowPreview}><DialogContent><DialogHeader><DialogTitle>Template preview</DialogTitle></DialogHeader><div className="h-[min(65dvh,620px)]"><TemplatePreview builder={builder} /></div></DialogContent></Dialog>
     </div>
   );
 }
 
 function Stepper({ step, onStep }: { step: number; onStep: (n: number) => void }) {
   return (
-    <div className="flex items-center gap-1 border-b bg-card px-4 py-2 text-xs">
+    <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b bg-card px-3 py-2 text-xs scroll-thin sm:px-4">
       {STEPS.map((label, i) => (
         <button
           key={label}
           onClick={() => onStep(i)}
           className={cn(
-            "flex items-center gap-1.5 rounded-md px-2 py-1 font-medium transition-colors",
+            "flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 font-medium transition-colors",
             i === step ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -403,21 +405,21 @@ function BodyStep({ builder, set, errorFor }: StepProps) {
   return (
     <div className="max-w-xl space-y-4">
       <div className="space-y-1">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <Label>Message body</Label>
           <div className="flex items-center gap-1.5">
             <Input
               value={varName}
               onChange={(e) => setVarName(e.target.value.toLowerCase().replace(/[^a-z_]/g, ""))}
               placeholder="name (optional)"
-              className="h-8 w-32 text-xs"
+              className="h-9 min-w-0 flex-1 text-xs sm:h-8 sm:w-32 sm:flex-none"
             />
             <Button variant="outline" size="sm" onClick={insertVariable}>
               <Plus className="h-3.5 w-3.5" /> Insert variable
             </Button>
           </div>
         </div>
-        <div className="flex items-center gap-1 rounded-md border bg-muted/30 p-1" role="toolbar" aria-label="Message formatting">
+        <div className="flex items-center gap-1 overflow-x-auto rounded-md border bg-muted/30 p-1 scroll-thin" role="toolbar" aria-label="Message formatting">
           {formats.map(({ format, label, icon }) => {
             const active = hasSelection && selectionHasWhatsAppFormat(builder.body.text, selection.start, selection.end, format);
             return <Button key={format} type="button" variant={active ? "secondary" : "ghost"} size="sm" disabled={!hasSelection} aria-pressed={active} onMouseDown={(event) => event.preventDefault()} onClick={() => applyFormat(format)} className="h-7 gap-1.5 px-2 text-xs">{icon}{label}</Button>;
@@ -445,7 +447,7 @@ function BodyStep({ builder, set, errorFor }: StepProps) {
         <div className="space-y-2 rounded-md border p-3">
           <Label>Sample values (used for preview and Meta review)</Label>
           {tokens.map((token) => (
-            <div key={token} className="flex items-center gap-2">
+            <div key={token} className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
               <Badge variant="secondary" className="font-mono">{`{{${token}}}`}</Badge>
               <Input
                 value={builder.body.examples[token] ?? ""}

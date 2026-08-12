@@ -55,6 +55,8 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    min-width: 320px;
+    overflow-x: hidden;
   }
 }
 
@@ -72,6 +74,9 @@
     background: hsl(var(--border));
     border-radius: 8px;
   }
+  .safe-bottom {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
 }
 
 /* WhatsApp chat wallpaper pattern for the preview + inbox */
@@ -83,4 +88,50 @@
 .dark .wa-wallpaper {
   background-color: #0b141a;
   background-image: radial-gradient(hsla(0, 0%, 100%, 0.03) 1px, transparent 1px);
+}
+
+@media (max-width: 767px) {
+  .responsive-table,
+  .responsive-table tbody {
+    display: block;
+    width: 100%;
+  }
+  .responsive-table thead {
+    display: none;
+  }
+  .responsive-table tbody tr {
+    display: grid;
+    width: 100%;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    background: hsl(var(--card));
+  }
+  .responsive-table tbody td {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0;
+    text-align: right;
+  }
+  .responsive-table tbody td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.6875rem;
+    font-weight: 500;
+    text-align: left;
+  }
+  .responsive-table tbody td:not([data-label])::before {
+    display: none;
+  }
+  .responsive-table tbody td[colspan] {
+    display: block;
+    padding: 1rem 0;
+    text-align: center;
+  }
 }

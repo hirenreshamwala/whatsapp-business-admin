@@ -41,7 +41,7 @@ export default async function DashboardPage() {
         title={`Welcome, ${session?.user.name?.split(" ")[0] ?? "there"}`}
         description="Overview of your WhatsApp Business workspace."
       />
-      <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 p-3 min-[430px]:grid-cols-2 sm:p-4 lg:grid-cols-4">
         {tiles.map((t) => {
           const Icon = t.icon;
           return (

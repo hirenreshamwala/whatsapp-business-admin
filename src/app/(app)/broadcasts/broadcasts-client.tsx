@@ -62,7 +62,7 @@ export function BroadcastsClient() {
         }
       />
 
-      <div className="p-4">
+      <div className="p-3 sm:p-4">
         <div className="rounded-lg border">
           <Table>
             <TableHeader>
@@ -88,12 +88,12 @@ export function BroadcastsClient() {
                 const pct = b.total ? Math.round((done / b.total) * 100) : 0;
                 return (
                   <TableRow key={b.id}>
-                    <TableCell className="font-medium">{b.name}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{b.templateName}</TableCell>
-                    <TableCell>
+                    <TableCell data-label="Name" className="font-medium">{b.name}</TableCell>
+                    <TableCell data-label="Template" className="text-xs text-muted-foreground">{b.templateName}</TableCell>
+                    <TableCell data-label="Status">
                       <Badge variant={STATUS_VARIANT[b.status]}>{b.status}</Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-label="Progress">
                       <div className="flex items-center gap-2">
                         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
                           <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
@@ -103,7 +103,7 @@ export function BroadcastsClient() {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{formatDateTime(b.createdAt)}</TableCell>
+                    <TableCell data-label="Created" className="text-xs text-muted-foreground">{formatDateTime(b.createdAt)}</TableCell>
                   </TableRow>
                 );
               })}

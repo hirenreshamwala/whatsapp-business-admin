@@ -71,7 +71,7 @@ export function LogsClient() {
         }
       />
 
-      <div className="flex-1 p-4">
+      <div className="flex-1 p-3 sm:p-4">
         <div className="rounded-lg border">
           {tab === "api" ? (
             <Table>
@@ -94,14 +94,14 @@ export function LogsClient() {
                     className="cursor-pointer"
                     onClick={() => setDetail({ title: `${log.method} ${log.endpoint}`, body: { request: log.requestBody, response: log.responseBody } })}
                   >
-                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(log.createdAt)}</TableCell>
-                    <TableCell><Badge variant="outline">{log.method}</Badge></TableCell>
-                    <TableCell className="max-w-0 truncate font-mono text-xs">{log.endpoint}</TableCell>
-                    <TableCell>
+                    <TableCell data-label="Time" className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(log.createdAt)}</TableCell>
+                    <TableCell data-label="Method"><Badge variant="outline">{log.method}</Badge></TableCell>
+                    <TableCell data-label="Endpoint" className="max-w-0 break-all font-mono text-xs md:truncate">{log.endpoint}</TableCell>
+                    <TableCell data-label="Status">
                       <Badge variant={log.ok ? "success" : "destructive"}>{log.responseStatus ?? "—"}</Badge>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{log.durationMs ?? "—"} ms</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{log.relatedType ?? "—"}</TableCell>
+                    <TableCell data-label="Duration" className="text-xs text-muted-foreground">{log.durationMs ?? "—"} ms</TableCell>
+                    <TableCell data-label="Related" className="text-xs text-muted-foreground">{log.relatedType ?? "—"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -125,12 +125,12 @@ export function LogsClient() {
                     className="cursor-pointer"
                     onClick={() => setDetail({ title: "Webhook payload", body: ev.payload })}
                   >
-                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(ev.createdAt)}</TableCell>
-                    <TableCell className="text-xs">{ev.eventSummary || ev.error || "—"}</TableCell>
-                    <TableCell>
+                    <TableCell data-label="Time" className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(ev.createdAt)}</TableCell>
+                    <TableCell data-label="Summary" className="text-xs">{ev.eventSummary || ev.error || "—"}</TableCell>
+                    <TableCell data-label="Signature">
                       <Badge variant={ev.signatureValid ? "success" : "warning"}>{ev.signatureValid ? "valid" : "unverified"}</Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-label="Processed">
                       <Badge variant={ev.processedOk ? "success" : "destructive"}>{ev.processedOk ? "ok" : "error"}</Badge>
                     </TableCell>
                   </TableRow>

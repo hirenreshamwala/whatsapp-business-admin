@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Search, Send, Paperclip, Check, CheckCheck, Clock, AlertCircle, MessageSquare, FileText, LayoutTemplate, Workflow,
+  Search, Send, Paperclip, Check, CheckCheck, Clock, AlertCircle, MessageSquare, FileText, LayoutTemplate, Workflow, ArrowLeft,
 } from "lucide-react";
 import { apiFetch } from "@/lib/fetcher";
 import { cn, formatTime } from "@/lib/utils";
@@ -81,9 +81,9 @@ export function InboxClient() {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full min-w-0">
       {/* Conversation list */}
-      <div className="flex w-72 shrink-0 flex-col border-r">
+      <div className={cn("w-full shrink-0 flex-col border-r md:flex md:w-64 lg:w-72", activeId ? "hidden" : "flex")}>
         <div className="border-b p-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -99,7 +99,7 @@ export function InboxClient() {
               key={c.id}
               onClick={() => openConversation(c.id)}
               className={cn(
-                "flex w-full items-center gap-2 border-b px-2.5 py-2 text-left transition-colors hover:bg-accent",
+                "flex min-h-14 w-full items-center gap-2 border-b px-3 py-2 text-left transition-colors hover:bg-accent md:min-h-0 md:px-2.5",
                 c.id === activeId && "bg-accent",
               )}
             >
@@ -128,8 +128,8 @@ export function InboxClient() {
       </div>
 
       {/* Thread */}
-      <div className="min-w-0 flex-1">
-        {activeId ? <ThreadPane conversationId={activeId} /> : <EmptyThread />}
+      <div className={cn("min-w-0 flex-1", activeId ? "block" : "hidden md:block")}>
+        {activeId ? <ThreadPane conversationId={activeId} onBack={() => router.push("/inbox")} /> : <EmptyThread />}
       </div>
     </div>
   );
@@ -144,7 +144,7 @@ function EmptyThread() {
   );
 }
 
-function ThreadPane({ conversationId }: { conversationId: string }) {
+function ThreadPane({ conversationId, onBack }: { conversationId: string; onBack: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -231,7 +231,8 @@ function ThreadPane({ conversationId }: { conversationId: string }) {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b bg-card px-3">
+      <div className="flex min-h-12 shrink-0 items-center gap-2 border-b bg-card px-2 py-1 sm:px-3">
+        <Button variant="ghost" size="icon" className="md:hidden" onClick={onBack} aria-label="Back to conversations"><ArrowLeft className="h-5 w-5" /></Button>
         <Avatar className="h-8 w-8">
           <AvatarFallback>{initials(contact)}</AvatarFallback>
         </Avatar>
@@ -239,13 +240,13 @@ function ThreadPane({ conversationId }: { conversationId: string }) {
           <div className="truncate text-sm font-medium">{displayName(contact)}</div>
           <div className="text-[11px] text-muted-foreground">+{contact.waId}</div>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto hidden sm:block">
           <Badge variant={windowOpen ? "success" : "warning"}>{windowInfo?.label}</Badge>
         </div>
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} className="wa-wallpaper min-h-0 flex-1 space-y-1.5 overflow-auto scroll-thin p-4">
+      <div ref={scrollRef} className="wa-wallpaper min-h-0 flex-1 space-y-1.5 overflow-auto p-2 scroll-thin sm:p-4">
         {data.messages.map((m) => <div key={m.id}><MessageBubble m={m} />{data.flowSubmissions.filter((submission) => submission.waMessageId === m.waMessageId).map((submission) => <FlowSubmissionCard key={submission.id} submission={submission} />)}</div>)}
         {data.messages.length === 0 && (
           <div className="mt-10 text-center text-xs text-muted-foreground">No messages yet. Say hello 👋</div>
@@ -253,7 +254,7 @@ function ThreadPane({ conversationId }: { conversationId: string }) {
       </div>
 
       {/* Composer */}
-      <div className="shrink-0 border-t bg-card p-2">
+      <div className="safe-bottom shrink-0 border-t bg-card p-2">
         {windowOpen ? (
           <div className="flex items-end gap-2">
             <input
@@ -270,6 +271,7 @@ function ThreadPane({ conversationId }: { conversationId: string }) {
               <Paperclip className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="icon" title="Send Flow" onClick={() => setShowFlows(true)}><Workflow className="h-4 w-4" /></Button>
+            <Button variant="ghost" size="icon" title="Send template" onClick={() => setShowTemplates(true)}><LayoutTemplate className="h-4 w-4" /></Button>
             <Input
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -286,7 +288,7 @@ function ThreadPane({ conversationId }: { conversationId: string }) {
             </Button>
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-2 rounded-md bg-muted/50 px-3 py-2">
+          <div className="flex flex-col items-stretch gap-2 rounded-md bg-muted/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-xs text-muted-foreground">
               This chat is outside the 24-hour window. You can only send an approved template.
             </span>
@@ -309,7 +311,7 @@ function ThreadPane({ conversationId }: { conversationId: string }) {
 }
 
 function FlowSubmissionCard({ submission }: { submission: FlowSubmission }) {
-  return <div className="ml-2 mt-1 max-w-md rounded-lg border border-emerald-200 bg-white p-3 text-zinc-900 shadow-sm dark:border-emerald-900 dark:bg-[#202c33] dark:text-zinc-50"><div className="mb-2 flex items-center gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400"><Workflow className="h-4 w-4" /> {submission.flow.name} submitted</div>{submission.response ? <div className="space-y-1">{Object.entries(submission.response).map(([key, value]) => <div key={key} className="grid grid-cols-[110px_1fr] gap-2 text-xs"><span className="font-medium">{key}</span><span className="break-words text-muted-foreground">{typeof value === "object" ? JSON.stringify(value) : String(value)}</span></div>)}</div> : <div className="text-xs text-muted-foreground">Response data has been purged.</div>}</div>;
+  return <div className="ml-2 mt-1 max-w-md rounded-lg border border-emerald-200 bg-white p-3 text-zinc-900 shadow-sm dark:border-emerald-900 dark:bg-[#202c33] dark:text-zinc-50"><div className="mb-2 flex items-center gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400"><Workflow className="h-4 w-4" /> {submission.flow.name} submitted</div>{submission.response ? <div className="space-y-1">{Object.entries(submission.response).map(([key, value]) => <div key={key} className="grid grid-cols-1 gap-0.5 text-xs min-[430px]:grid-cols-[110px_1fr] min-[430px]:gap-2"><span className="font-medium">{key}</span><span className="break-words text-muted-foreground">{typeof value === "object" ? JSON.stringify(value) : String(value)}</span></div>)}</div> : <div className="text-xs text-muted-foreground">Response data has been purged.</div>}</div>;
 }
 
 function MessageBubble({ m }: { m: Msg }) {
@@ -318,7 +320,7 @@ function MessageBubble({ m }: { m: Msg }) {
     <div className={cn("flex", out ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[70%] rounded-lg px-2.5 py-1.5 text-sm shadow-sm",
+          "max-w-[88%] rounded-lg px-2.5 py-1.5 text-sm shadow-sm sm:max-w-[70%]",
           out ? "rounded-tr-none bg-[#d9fdd3] text-zinc-900 dark:bg-[#005c4b] dark:text-zinc-50" : "rounded-tl-none bg-white text-zinc-900 dark:bg-[#202c33] dark:text-zinc-50",
         )}
       >

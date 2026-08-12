@@ -21,7 +21,7 @@ export function DeveloperClient({ baseUrl }: { baseUrl: string }) {
   return (
     <div className="flex h-full flex-col">
       <PageHeader title="API" description="Programmatic access to send messages, templates and broadcasts." />
-      <div className="min-h-0 flex-1 overflow-auto scroll-thin p-4">
+      <div className="min-h-0 flex-1 overflow-auto p-3 scroll-thin sm:p-4">
         <Tabs defaultValue="keys">
           <TabsList>
             <TabsTrigger value="keys">API Keys</TabsTrigger>
@@ -62,7 +62,7 @@ function ApiKeys() {
 
   return (
     <div className="max-w-3xl space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-muted-foreground">
           Use these keys to authenticate requests to <code className="rounded bg-muted px-1">/api/v1</code>.
           Keep them secret — treat a key like a password.
@@ -111,13 +111,13 @@ function ApiKeys() {
             )}
             {keys.map((k) => (
               <TableRow key={k.id}>
-                <TableCell className="font-medium">{k.name}</TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">{k.keyPrefix}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">
+                <TableCell data-label="Name" className="font-medium">{k.name}</TableCell>
+                <TableCell data-label="Key" className="break-all font-mono text-xs text-muted-foreground">{k.keyPrefix}</TableCell>
+                <TableCell data-label="Last used" className="text-xs text-muted-foreground">
                   {k.lastUsedAt ? formatDateTime(k.lastUsedAt) : "never"}
                 </TableCell>
-                <TableCell className="text-xs text-muted-foreground">{formatDateTime(k.createdAt)}</TableCell>
-                <TableCell className="text-right">
+                <TableCell data-label="Created" className="text-xs text-muted-foreground">{formatDateTime(k.createdAt)}</TableCell>
+                <TableCell data-label="Revoke" className="text-right">
                   <Button
                     variant="ghost"
                     size="icon"

@@ -97,7 +97,7 @@ export function TemplatesClient() {
         }
       />
 
-      <div className="p-4">
+      <div className="p-3 sm:p-4">
         <div className="rounded-lg border">
           <Table>
             <TableHeader>
@@ -127,21 +127,21 @@ export function TemplatesClient() {
                 const editable = t.status === "LOCAL" || t.status === "REJECTED";
                 return (
                   <TableRow key={t.id}>
-                    <TableCell className="font-medium">
+                    <TableCell data-label="Name" className="font-medium">
                       <div>{t.name}</div>
                       {t.rejectionReason && (
                         <div className="text-[11px] text-destructive">{t.rejectionReason}</div>
                       )}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{t.language}</TableCell>
-                    <TableCell>
+                    <TableCell data-label="Language" className="text-xs text-muted-foreground">{t.language}</TableCell>
+                    <TableCell data-label="Category">
                       <Badge variant="outline">{t.category}</Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-label="Status">
                       <Badge variant={STATUS_VARIANT[t.status]}>{t.status}</Badge>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{formatDateTime(t.updatedAt)}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell data-label="Updated" className="text-xs text-muted-foreground">{formatDateTime(t.updatedAt)}</TableCell>
+                    <TableCell data-label="Actions" className="text-right">
                       <div className="flex justify-end gap-0.5">
                         <Button variant="ghost" size="icon" title="Preview" onClick={() => setPreview(t)}>
                           <Eye className="h-4 w-4" />

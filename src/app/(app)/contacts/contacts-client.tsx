@@ -74,8 +74,8 @@ export function ContactsClient({ isAdmin }: { isAdmin: boolean }) {
         }
       />
 
-      <div className="p-4">
-        <div className="relative mb-3 max-w-xs">
+      <div className="p-3 sm:p-4">
+        <div className="relative mb-3 w-full sm:max-w-xs">
           <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input className="pl-8" placeholder="Search name or number…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
@@ -103,18 +103,18 @@ export function ContactsClient({ isAdmin }: { isAdmin: boolean }) {
               )}
               {contacts.map((c) => (
                 <TableRow key={c.id}>
-                  <TableCell className="font-medium">
+                  <TableCell data-label="Name" className="font-medium">
                     {c.name || c.profileName || <span className="text-muted-foreground">Unknown</span>}
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">+{c.waId}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="Number" className="font-mono text-xs text-muted-foreground">+{c.waId}</TableCell>
+                  <TableCell data-label="Tags">
                     <div className="flex flex-wrap gap-1">
                       {c.tags.map((t) => (
                         <Badge key={t} variant="secondary">{t}</Badge>
                       ))}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell data-label="Actions" className="text-right">
                     <div className="flex justify-end gap-0.5">
                       <Button variant="ghost" size="icon" title="Open chat" onClick={() => startChat.mutate(c)}>
                         <MessageSquare className="h-4 w-4" />
