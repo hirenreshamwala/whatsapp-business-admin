@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { v1Handle, apiOk, requireApiKey, ApiError } from "@/lib/v1";
+import { v1Handle, apiOk, requireApiKey, ApiError, parseJsonBody } from "@/lib/v1";
 import { prisma } from "@/lib/prisma";
 import { runBroadcast } from "@/lib/whatsapp/broadcast";
 
@@ -21,7 +21,7 @@ const schema = z.object({
  * { "name":"Diwali", "template":"promo_oct", "audience":{"type":"tag","tag":"vip"} }
  */
 export const POST = v1Handle(async (req) => {
-  const raw = await req.json().catch(() => ({}));
+  const raw = await parseJsonBody(req);
   const body = schema.parse(raw);
   const principal = await requireApiKey(req, body);
 

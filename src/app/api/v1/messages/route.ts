@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { v1Handle, apiOk, requireApiKey, ApiError } from "@/lib/v1";
+import { v1Handle, apiOk, requireApiKey, ApiError, parseJsonBody } from "@/lib/v1";
 import { prisma } from "@/lib/prisma";
 import { ensureConversation, sendMessage, isWithinSessionWindow } from "@/lib/whatsapp/send";
 import { storeFromLink } from "@/lib/whatsapp/media";
@@ -63,7 +63,7 @@ const MEDIA_TYPES = ["image", "video", "audio", "document"] as const;
  * Template with named variables: "body_variables":{"first_name":"Priya","order_number":"#A123"}
  */
 export const POST = v1Handle(async (req) => {
-  const raw = await req.json().catch(() => ({}));
+  const raw = await parseJsonBody(req);
   const body = schema.parse(raw);
   await requireApiKey(req, body);
 

@@ -19,6 +19,15 @@ export function apiFail(status: number, message: string) {
   return NextResponse.json({ status: "error", message }, { status });
 }
 
+/** Parse a JSON request body without disguising malformed JSON as missing fields. */
+export async function parseJsonBody(req: Request): Promise<unknown> {
+  try {
+    return await req.json();
+  } catch {
+    throw new ApiError(400, "Invalid JSON request body. Check for missing commas, quotes, or brackets.");
+  }
+}
+
 /** Extract a presented key from header, bearer token, query, or JSON body. */
 export function extractApiKey(req: Request, body?: Record<string, unknown>): string | null {
   const header = req.headers.get("x-api-key");
