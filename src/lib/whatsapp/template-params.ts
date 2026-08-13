@@ -4,6 +4,8 @@
  * nested structure. A raw `components` array can still be passed to override.
  */
 
+import type { ApiComponent, ApiButton } from "@/lib/whatsapp/template-types";
+
 export type HeaderMediaInput = {
   type: "image" | "video" | "document";
   link?: string;
@@ -37,6 +39,100 @@ export type TemplateSendInput = {
   /** Full Meta components array — bypasses all shorthands when present. */
   components?: unknown[];
 };
+
+export class TemplateButtonParameterError extends Error {
+  readonly status = 400;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "TemplateButtonParameterError";
+  }
+}
+
+const URL_TOKEN = /\{\{\s*1\s*\}\}/g;
+
+function runtimeButtonType(button: ApiButton): TemplateButtonInput["type"] | null {
+  if (button.type === "URL") return "url";
+  if (button.type === "QUICK_REPLY") return "quick_reply";
+  if (button.type === "COPY_CODE") return "copy_code";
+  return null;
+}
+
+/**
+ * Validate friendly send-time button values against the approved template.
+ * For dynamic URL buttons, callers may pass either Meta's native replacement
+ * value or the complete URL resolved from the approved `...{{1}}` pattern.
+ */
+export function normalizeTemplateButtonInputs(
+  templateComponents: ApiComponent[],
+  inputs?: TemplateButtonInput[],
+): TemplateButtonInput[] | undefined {
+  if (!inputs?.length) return inputs;
+
+  const component = templateComponents.find((item) => item.type === "BUTTONS");
+  const templateButtons = component?.type === "BUTTONS" ? component.buttons : [];
+  const seen = new Set<number>();
+
+  return inputs.map((input) => {
+    const index = input.index ?? 0;
+    if (seen.has(index)) {
+      throw new TemplateButtonParameterError(`Duplicate button parameter for index ${index}.`);
+    }
+    seen.add(index);
+
+    const templateButton = templateButtons[index];
+    if (!templateButton) {
+      throw new TemplateButtonParameterError(
+        `Button index ${index} does not exist in the approved template. Button indices are zero-based.`,
+      );
+    }
+
+    const suppliedType = input.type ?? "url";
+    const expectedType = runtimeButtonType(templateButton);
+    if (!expectedType) {
+      throw new TemplateButtonParameterError(
+        `Button index ${index} is ${templateButton.type.toLowerCase()} and does not accept a send-time parameter.`,
+      );
+    }
+    if (suppliedType !== expectedType) {
+      throw new TemplateButtonParameterError(
+        `Button index ${index} expects type "${expectedType}", not "${suppliedType}".`,
+      );
+    }
+
+    const value = input.value.trim();
+    if (!value) throw new TemplateButtonParameterError(`Button index ${index} requires a non-empty value.`);
+    if (templateButton.type !== "URL") return { ...input, type: suppliedType, index, value };
+
+    const matches = [...templateButton.url.matchAll(URL_TOKEN)];
+    if (matches.length === 0) {
+      throw new TemplateButtonParameterError(
+        `Button index ${index} has a static approved URL and must be omitted from "buttons". It is included automatically.`,
+      );
+    }
+    if (matches.length !== 1) {
+      throw new TemplateButtonParameterError(`Button index ${index} has an unsupported dynamic URL pattern.`);
+    }
+
+    // Native Meta input is just the replacement. Complete http(s) URLs are a
+    // convenience accepted only when their fixed approved prefix/suffix match.
+    let normalized = value;
+    if (/^https?:\/\//i.test(value)) {
+      const match = matches[0];
+      const prefix = templateButton.url.slice(0, match.index);
+      const suffix = templateButton.url.slice((match.index ?? 0) + match[0].length);
+      if (!value.startsWith(prefix) || !value.endsWith(suffix) || value.length <= prefix.length + suffix.length) {
+        throw new TemplateButtonParameterError(
+          `Button index ${index} URL must match the approved pattern "${templateButton.url}".`,
+        );
+      }
+      normalized = value.slice(prefix.length, suffix ? -suffix.length : undefined);
+    }
+
+    if (!normalized) throw new TemplateButtonParameterError(`Button index ${index} requires a non-empty URL value.`);
+    return { ...input, type: "url", index, value: normalized };
+  });
+}
 
 export function buildTemplateComponents(input: TemplateSendInput): unknown[] {
   if (input.components && input.components.length) return input.components;

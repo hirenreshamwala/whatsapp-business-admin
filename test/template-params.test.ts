@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { buildTemplateComponents } from "@/lib/whatsapp/template-params";
+import { buildTemplateComponents, normalizeTemplateButtonInputs } from "@/lib/whatsapp/template-params";
+import type { ApiComponent } from "@/lib/whatsapp/template-types";
+
+const buttonTemplate = (...buttons: Extract<ApiComponent, { type: "BUTTONS" }>["buttons"]): ApiComponent[] => [
+  { type: "BODY", text: "Welcome" },
+  { type: "BUTTONS", buttons },
+];
 
 describe("buildTemplateComponents", () => {
   it("returns empty for no input", () => {
@@ -81,5 +87,58 @@ describe("buildTemplateComponents", () => {
   it("raw components override all shorthands", () => {
     const raw = [{ type: "body", parameters: [] }];
     expect(buildTemplateComponents({ components: raw, header_text: "ignored" })).toBe(raw);
+  });
+});
+
+describe("normalizeTemplateButtonInputs", () => {
+  it("preserves Meta's native replacement value", () => {
+    const components = buttonTemplate({ type: "URL", text: "Watch", url: "https://youtu.be/{{1}}", example: ["abc"] });
+    expect(normalizeTemplateButtonInputs(components, [{ type: "url", index: 0, value: "LdoqBW-l1IU" }])).toEqual([
+      { type: "url", index: 0, value: "LdoqBW-l1IU" },
+    ]);
+  });
+
+  it("extracts the replacement from a complete matching URL", () => {
+    const components = buttonTemplate({ type: "URL", text: "Watch", url: "https://youtu.be/{{1}}", example: ["abc"] });
+    expect(normalizeTemplateButtonInputs(components, [{ type: "url", index: 0, value: "https://youtu.be/LdoqBW-l1IU" }])).toEqual([
+      { type: "url", index: 0, value: "LdoqBW-l1IU" },
+    ]);
+  });
+
+  it("normalizes multiple URL buttons by their actual template index", () => {
+    const components = buttonTemplate(
+      { type: "URL", text: "Instagram", url: "https://www.instagram.com/reel/{{1}}", example: ["abc"] },
+      { type: "URL", text: "YouTube", url: "https://youtu.be/{{1}}", example: ["xyz"] },
+    );
+    expect(normalizeTemplateButtonInputs(components, [
+      { type: "url", index: 0, value: "https://www.instagram.com/reel/DbBakl8oS7u/" },
+      { type: "url", index: 1, value: "https://youtu.be/LdoqBW-l1IU" },
+    ])).toEqual([
+      { type: "url", index: 0, value: "DbBakl8oS7u/" },
+      { type: "url", index: 1, value: "LdoqBW-l1IU" },
+    ]);
+  });
+
+  it("rejects a parameter for a static URL button", () => {
+    const components = buttonTemplate({ type: "URL", text: "Website", url: "https://example.com" });
+    expect(() => normalizeTemplateButtonInputs(components, [{ type: "url", index: 0, value: "https://other.example" }]))
+      .toThrow(/static approved URL/);
+  });
+
+  it("rejects complete URLs outside the approved pattern", () => {
+    const components = buttonTemplate({ type: "URL", text: "Watch", url: "https://youtu.be/{{1}}", example: ["abc"] });
+    expect(() => normalizeTemplateButtonInputs(components, [{ type: "url", index: 0, value: "https://example.com/video" }]))
+      .toThrow(/must match the approved pattern/);
+  });
+
+  it("rejects wrong types, invalid indices, empty values, and duplicate indices", () => {
+    const components = buttonTemplate({ type: "URL", text: "Watch", url: "https://youtu.be/{{1}}", example: ["abc"] });
+    expect(() => normalizeTemplateButtonInputs(components, [{ type: "quick_reply", index: 0, value: "x" }])).toThrow(/expects type "url"/);
+    expect(() => normalizeTemplateButtonInputs(components, [{ type: "url", index: 2, value: "x" }])).toThrow(/does not exist/);
+    expect(() => normalizeTemplateButtonInputs(components, [{ type: "url", index: 0, value: " " }])).toThrow(/non-empty/);
+    expect(() => normalizeTemplateButtonInputs(components, [
+      { type: "url", index: 0, value: "one" },
+      { type: "url", index: 0, value: "two" },
+    ])).toThrow(/Duplicate/);
   });
 });

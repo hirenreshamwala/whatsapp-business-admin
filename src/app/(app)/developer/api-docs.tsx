@@ -175,7 +175,7 @@ export function ApiDocs({ baseUrl }: { baseUrl: string }) {
       path: "/api/v1/messages",
       title: "Template — body variables",
       description:
-        "Send an approved template (works any time). `body_variables` fills the body placeholders {{1}}, {{2}}… in order. (`variables` is an accepted alias.) For templates with named variables like {{code}}, pass an object instead, e.g. `{\"code\": \"1234\"}`. Omit them to use the template's saved sample values.",
+        "Send an approved template (works any time). `body_variables` fills the body placeholders {{1}}, {{2}}… in order. (`variables` is an accepted alias.) For templates with named variables like {{code}}, pass an object instead, e.g. `{\"code\": \"1234\"}`. Omit them to use the template's saved sample values. Template footers are fixed at approval time and cannot receive send-time parameters.",
       request: `curl -s -X POST ${baseUrl}/api/v1/messages \\
   -H "X-API-Key: ${KEY}" \\
   -H "Content-Type: application/json" \\
@@ -234,7 +234,7 @@ export function ApiDocs({ baseUrl }: { baseUrl: string }) {
       path: "/api/v1/messages",
       title: "Template — dynamic button",
       description:
-        "For a dynamic URL button, pass its `index` (0-based) and the URL suffix as `value`. `type` may also be quick_reply (payload) or copy_code (coupon).",
+        "Only buttons approved with a dynamic {{1}} accept URL parameters. Pass the button `index` (0-based) and either its replacement value or the complete URL matching the approved prefix. Static URL buttons are included automatically and must be omitted. `type` may also be quick_reply (payload) or copy_code (coupon).",
       request: `curl -s -X POST ${baseUrl}/api/v1/messages \\
   -H "X-API-Key: ${KEY}" \\
   -H "Content-Type: application/json" \\
@@ -245,7 +245,7 @@ export function ApiDocs({ baseUrl }: { baseUrl: string }) {
     "language": "en_US",
     "body_variables": ["Priya", "#A1234"],
     "buttons": [
-      { "type": "url", "index": 0, "value": "order/A1234" }
+      { "type": "url", "index": 0, "value": "https://example.com/order/A1234" }
     ]
   }'`,
       response: sent,

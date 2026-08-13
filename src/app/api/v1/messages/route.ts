@@ -3,7 +3,7 @@ import { v1Handle, apiOk, requireApiKey, ApiError, parseJsonBody } from "@/lib/v
 import { prisma } from "@/lib/prisma";
 import { ensureConversation, sendMessage, isWithinSessionWindow } from "@/lib/whatsapp/send";
 import { storeFromLink } from "@/lib/whatsapp/media";
-import { buildTemplateComponents } from "@/lib/whatsapp/template-params";
+import { buildTemplateComponents, normalizeTemplateButtonInputs } from "@/lib/whatsapp/template-params";
 import { templateExampleComponents, templateRuntimeComponents } from "@/lib/whatsapp/template-service";
 import type { ApiComponent } from "@/lib/whatsapp/template-types";
 import { finishPreparedFlowLaunch, prepareTemplateFlowLaunch } from "@/lib/whatsapp/flow-launch";
@@ -134,12 +134,15 @@ export const POST = v1Handle(async (req) => {
     throw new ApiError(404, `No approved template named "${body.template}"${body.language ? ` (${body.language})` : ""}`);
   }
 
+  const normalizedButtons = body.components?.length
+    ? body.buttons
+    : normalizeTemplateButtonInputs(template.components as unknown as ApiComponent[], body.buttons);
   let components = buildTemplateComponents({
     body_variables: body.body_variables,
     variables: body.variables,
     header_text: body.header_text,
     header_media: body.header_media,
-    buttons: body.buttons,
+    buttons: normalizedButtons,
     components: body.components,
   });
   const suppliedBodyVariables = body.body_variables ?? body.variables;

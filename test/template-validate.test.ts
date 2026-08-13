@@ -72,6 +72,18 @@ describe("validateTemplate", () => {
     expect(validateTemplate(b).some((e) => e.field.startsWith("button"))).toBe(true);
   });
 
+  it("requires a valid fixed prefix and a single terminal {{1}} for dynamic URL buttons", () => {
+    const b = base();
+    b.buttons = [{ type: "URL", text: "Track", url: "{{1}}", example: "order-1" }];
+    expect(validateTemplate(b).some((e) => e.message.includes("fixed http(s) prefix"))).toBe(true);
+    b.buttons = [{ type: "URL", text: "Track", url: "https://{{1}}", example: "example.com" }];
+    expect(validateTemplate(b).some((e) => e.message.includes("fixed http(s) prefix"))).toBe(true);
+    b.buttons = [{ type: "URL", text: "Track", url: "https://x.com/{{1}}/details", example: "order-1" }];
+    expect(validateTemplate(b).some((e) => e.message.includes("at the end"))).toBe(true);
+    b.buttons = [{ type: "URL", text: "Track", url: "https://x.com/{{1}}", example: "order-1" }];
+    expect(validateTemplate(b).some((e) => e.field.startsWith("button"))).toBe(false);
+  });
+
   it("accepts named variables with sample values", () => {
     const b = base();
     b.body = { text: "{{code}} is your code", examples: { code: "1234" } };

@@ -557,7 +557,7 @@ function ButtonsStep({
                   <Input
                     value={btn.example ?? ""}
                     onChange={(e) => update(i, { example: e.target.value })}
-                    placeholder="Sample full URL, e.g. https://example.com/order/123"
+                    placeholder="Sample replacement value, e.g. 123"
                   />
                 )}
               </>

@@ -104,8 +104,23 @@ export function validateTemplate(b: TemplateBuilder): FieldError[] {
     if (btn.type === "URL") {
       if (!btn.text.trim()) errors.push({ field: `button-${i}`, message: "URL button needs text." });
       if (!btn.url.trim()) errors.push({ field: `button-${i}`, message: "URL button needs a URL." });
-      if (variableNumbers(btn.url).length > 0 && !(btn.example ?? "").trim())
-        errors.push({ field: `button-${i}`, message: "Dynamic URL needs a sample value." });
+      const variables = variableNumbers(btn.url);
+      if (variables.length > 0) {
+        if (variables.length !== 1 || variables[0] !== 1 || !/\{\{\s*1\s*\}\}\s*$/.test(btn.url))
+          errors.push({ field: `button-${i}`, message: "Dynamic URL must contain one {{1}} at the end." });
+        const fixedPrefix = btn.url.replace(/\{\{\s*1\s*\}\}\s*$/, "");
+        let validFixedPrefix = false;
+        try {
+          const parsed = new URL(fixedPrefix);
+          validFixedPrefix = ["http:", "https:"].includes(parsed.protocol) && Boolean(parsed.hostname);
+        } catch {
+          validFixedPrefix = false;
+        }
+        if (!validFixedPrefix)
+          errors.push({ field: `button-${i}`, message: "Dynamic URL needs a fixed http(s) prefix before {{1}}." });
+        if (!(btn.example ?? "").trim())
+          errors.push({ field: `button-${i}`, message: "Dynamic URL needs a sample replacement value." });
+      }
     }
     if (btn.type === "PHONE_NUMBER") {
       if (!btn.text.trim()) errors.push({ field: `button-${i}`, message: "Call button needs text." });

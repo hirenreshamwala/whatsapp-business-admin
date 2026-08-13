@@ -19,9 +19,9 @@ describe("parseJsonBody", () => {
       body: '{"to":"919913260460" "buttons":[]}',
     });
 
-    await expect(parseJsonBody(request)).rejects.toMatchObject<ApiError>({
+    await expect(parseJsonBody(request)).rejects.toMatchObject({
       status: 400,
       message: "Invalid JSON request body. Check for missing commas, quotes, or brackets.",
-    });
+    } satisfies Partial<ApiError>);
   });
 });
